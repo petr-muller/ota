@@ -46,6 +46,7 @@ func (o *options) validate() error {
 }
 
 func main() {
+	// TODO(muller): Cobrify as ota monitor jira create-impact-statement-request
 	o := gatherOptions()
 	if err := o.validate(); err != nil {
 		logrus.WithError(err).Fatal("invalid options")
@@ -72,7 +73,6 @@ func main() {
 		logrus.Infof("issue %s is assigned to %s", ocpbugsId, assignee.Name)
 	}
 
-	// TODO(muller): Create the impact statement request card
 	// TODO(muller): Add the impact statement request card link to the OCPBUGS card
 	// TODO(muller): Add a comment to the OCPBUGS card with the impact statement request card link
 	// TODO(muller): Set labels on OCPBUGS card to indicate that the impact statement request has been created
