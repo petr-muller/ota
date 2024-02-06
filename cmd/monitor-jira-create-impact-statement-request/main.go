@@ -58,6 +58,7 @@ func main() {
 	}
 
 	ocpbugsId := fmt.Sprintf("OCPBUGS-%d", o.bugId)
+	logrus.Infof("Obtaining issue %s", ocpbugsId)
 
 	blockerCandidate, err := jiraClient.GetIssue(ocpbugsId)
 	if err != nil {
@@ -68,9 +69,9 @@ func main() {
 
 	assignee := blockerCandidate.Fields.Assignee
 	if assignee == nil {
-		logrus.Warning("issue %s has no assignee", ocpbugsId)
+		logrus.Warning("Issue %s has no assignee", ocpbugsId)
 	} else {
-		logrus.Infof("issue %s is assigned to %s", ocpbugsId, assignee.Name)
+		logrus.Infof("Issue %s is assigned to %s", ocpbugsId, assignee.Name)
 	}
 
 	// TODO(muller): Add the impact statement request card link to the OCPBUGS card
@@ -91,11 +92,13 @@ func main() {
 		impactStatementRequest.Fields.Assignee = assignee
 	}
 
+	logrus.Infof("Creating impact statement request Spike card in %s project", o.componentProject)
 	isrIssue, err := jiraClient.CreateIssue(&impactStatementRequest)
 	if err != nil {
 		logrus.WithError(err).Fatal("cannot create impact statement request")
 	}
 
+	logrus.Infof("Creating a '%s blocks %s' link between the cards", isrIssue.Key, blockerCandidate.Key)
 	blockLink := jira.IssueLink{
 		OutwardIssue: &jira.Issue{ID: blockerCandidate.ID},
 		InwardIssue:  &jira.Issue{ID: isrIssue.ID},
@@ -110,12 +113,13 @@ func main() {
 		logrus.WithError(err).Fatal("cannot create issue link")
 	}
 
+	logrus.Infof("Adding an informative comment to %s card", blockerCandidate.Key)
 	var assigneeComment string
 	if assignee != nil {
-		assigneeComment = fmt.Sprintf(" and assigned it to [%s] (this card's assignee)", assignee.Name)
+		assigneeComment = fmt.Sprintf(" and assigned it to [~%s] (this card's assignee)", assignee.Name)
 	}
 	commentBody := fmt.Sprintf(
-		"This card has been labeled as a potential upgrade risk with an {{ UpgradeBlock }} label. We have created a card %s to help us understand the impact of the bug so that we can warn exposed cluster owners about it before they upgrade to an affected OCP version%s. The card simply asks for answers to several questions and should not require too much time to answer.",
+		"This card has been labeled as a potential upgrade risk with an {{UpgradeBlock}} label. We have created a card %s to help us understand the impact of the bug so that we can warn exposed cluster owners about it before they upgrade to an affected OCP version%s. The card simply asks for answers to several questions and should not require too much time to answer.",
 		isrIssue.Key, assigneeComment,
 	)
 
@@ -127,13 +131,17 @@ func main() {
 		Visibility: jira.CommentVisibility{}, // TODO(muller): Use employee visibility
 	}
 
-	if _, err := jiraClient.AddComment(isrIssue.ID, candidateBugComment); err != nil {
+	if _, err := jiraClient.AddComment(blockerCandidate.ID, candidateBugComment); err != nil {
 		logrus.WithError(err).Fatal("cannot create comment")
 	}
 
-	blockerCandidate.Fields.Labels = append(blockerCandidate.Fields.Labels, "ImpactStatementRequested")
+	logrus.Infof("Adding the ImpactStatementRequested label to %s card", blockerCandidate.Key)
+	labels := append([]string{"ImpactStatementRequested"}, blockerCandidate.Fields.Labels...)
 
-	if _, err := jiraClient.UpdateIssue(blockerCandidate); err != nil {
+	if _, err := jiraClient.UpdateIssue(&jira.Issue{
+		Key:    blockerCandidate.Key,
+		Fields: &jira.IssueFields{Labels: labels},
+	}); err != nil {
 		logrus.WithError(err).Fatal("cannot update issue")
 	}
 
