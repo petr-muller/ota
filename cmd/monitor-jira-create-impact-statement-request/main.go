@@ -7,7 +7,15 @@ import (
 
 	"github.com/andygrunwald/go-jira"
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/test-infra/prow/flagutil"
+)
+
+const (
+	upgradeBlockerCandidate  = "UpgradeBlocker"
+	impactStatementRequested = "ImpactStatementRequested"
+	impactStatementProposed  = "ImpactStatementProposed"
+	knownIssueAnnounced      = "UpgradeRecommendationBlocked"
 )
 
 type options struct {
@@ -74,15 +82,12 @@ func main() {
 		logrus.Infof("Issue %s is assigned to %s", ocpbugsId, assignee.Name)
 	}
 
-	// TODO(muller): Add the impact statement request card link to the OCPBUGS card
-	// TODO(muller): Add a comment to the OCPBUGS card with the impact statement request card link
-	// TODO(muller): Set labels on OCPBUGS card to indicate that the impact statement request has been created
-
 	impactStatementRequest := jira.Issue{
 		Fields: &jira.IssueFields{
 			Type:        jira.IssueType{Name: "Spike"},
 			Project:     jira.Project{Key: o.componentProject},
 			Priority:    &jira.Priority{Name: "Critical"},
+			Labels:      []string{upgradeBlockerCandidate},
 			Description: fmt.Sprintf(descriptionTemplate, ocpbugsId, ocpbugsId),
 			Summary:     fmt.Sprintf("Impact statement request for %s %s", ocpbugsId, blockerCandidate.Fields.Summary),
 			Reporter:    &jira.User{Name: "afri@afri.cz"}, // TODO(muller): Use the user associated with the Jira client
@@ -136,11 +141,14 @@ func main() {
 	}
 
 	logrus.Infof("Adding the ImpactStatementRequested label to %s card", blockerCandidate.Key)
-	labels := append([]string{"ImpactStatementRequested"}, blockerCandidate.Fields.Labels...)
+
+	labels := sets.New[string](blockerCandidate.Fields.Labels...)
+	labels.Insert(impactStatementRequested)
+	labels.Insert(upgradeBlockerCandidate)
 
 	if _, err := jiraClient.UpdateIssue(&jira.Issue{
 		Key:    blockerCandidate.Key,
-		Fields: &jira.IssueFields{Labels: labels},
+		Fields: &jira.IssueFields{Labels: sets.List(labels)},
 	}); err != nil {
 		logrus.WithError(err).Fatal("cannot update issue")
 	}
