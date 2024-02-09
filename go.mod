@@ -5,7 +5,7 @@ go 1.21.6
 require (
 	github.com/andygrunwald/go-jira v1.14.0
 	github.com/sirupsen/logrus v1.9.0
-	k8s.io/apimachinery v0.29.1
+	k8s.io/apimachinery v0.28.0-alpha.0
 	k8s.io/test-infra v0.0.0-20240205143405-dd1ecf10eaf0
 )
 
@@ -119,7 +119,7 @@ require (
 	k8s.io/client-go v0.25.9 // indirect
 	k8s.io/component-base v0.25.4 // indirect
 	k8s.io/klog/v2 v2.110.1 // indirect
-	k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00 // indirect
+	k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f // indirect
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b // indirect
 	knative.dev/pkg v0.0.0-20230221145627-8efb3485adcf // indirect
 	sigs.k8s.io/controller-runtime v0.12.3 // indirect
