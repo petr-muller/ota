@@ -29,7 +29,7 @@ func gatherOptions() options {
 	var o options
 	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
-	fs.IntVar(&o.bugId, "bug", 0, "The numerical part of the OCPBUGS card to create the impact statement request for")
+	fs.IntVar(&o.bugId, "bug", 0, "The numerical part of the OCPBUGS card to clear all UpgradeBlocker related labels from")
 
 	o.jira.AddFlags(fs)
 
