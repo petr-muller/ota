@@ -88,10 +88,17 @@ func main() {
 		impactStatementRequest = impactStatementRequestCandidates[0]
 		logrus.Infof("Found a single impact statement request: %s %s", impactStatementRequest.Key, impactStatementRequest.Fields.Summary)
 	default:
-		logrus.Infof("Found multiple possible impact statement requests, rerun and pass the correct one with --impact-statement-card:")
+		logrus.Infof("Found multiple possible impact statement requests:")
 		for _, candidate := range impactStatementRequestCandidates {
-			fmt.Printf("%s: %s", candidate.Key, candidate.Fields.Summary)
-			return
+			fmt.Printf("  %s: %s", candidate.Key, candidate.Fields.Summary)
+			if candidate.Key == o.impactStatementRequestCard {
+				impactStatementRequest = candidate
+				fmt.Printf(" (selected)")
+			}
+			fmt.Printf("\n")
+		}
+		if o.impactStatementRequestCard == "" {
+			logrus.Infof("Rerun and pass the correct one with --impact-statement-card:")
 		}
 	}
 
