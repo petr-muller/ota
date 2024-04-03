@@ -12,13 +12,8 @@ import (
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/test-infra/prow/flagutil"
-)
 
-const (
-	upgradeBlockerCandidate  = "UpgradeBlocker"
-	impactStatementRequested = "ImpactStatementRequested"
-	impactStatementProposed  = "ImpactStatementProposed"
-	knownIssueAnnounced      = "UpgradeRecommendationBlocked"
+	"github.com/petr-muller/ota/internal/updateblockers"
 )
 
 type options struct {
@@ -138,8 +133,8 @@ func main() {
 	var conditionalRiskName string
 	var conditionalRiskSummary string
 
-	logrus.Infof("%s: Removing %s,%s,%s (if present) and adding %s", blockerCandidate.Key, upgradeBlockerCandidate, impactStatementRequested, impactStatementProposed, knownIssueAnnounced)
-	labels := sets.New[string](blockerCandidate.Fields.Labels...).Delete(upgradeBlockerCandidate, impactStatementRequested, impactStatementProposed).Insert(knownIssueAnnounced)
+	logrus.Infof("%s: Removing %s,%s (if present) and adding %s,%s", blockerCandidate.Key, updateblockers.LabelImpactStatementRequested, updateblockers.LabelImpactStatementProposed, updateblockers.LabelKnownIssueAnnounced, updateblockers.LabelBlocker)
+	labels := sets.New[string](blockerCandidate.Fields.Labels...).Delete(updateblockers.LabelImpactStatementRequested, updateblockers.LabelImpactStatementProposed).Insert(updateblockers.LabelKnownIssueAnnounced, updateblockers.LabelBlocker)
 
 	if _, err := jiraClient.UpdateIssue(&jira.Issue{
 		Key:    blockerCandidate.Key,
@@ -149,8 +144,8 @@ func main() {
 	}
 
 	if impactStatementRequest != nil {
-		logrus.Infof("%s: Labelling Impact Statement Request card with %s for searchability", impactStatementRequest.Key, upgradeBlockerCandidate)
-		labels := sets.New[string](impactStatementRequest.Fields.Labels...).Insert(upgradeBlockerCandidate)
+		logrus.Infof("%s: Labelling Impact Statement Request card with %s for searchability", impactStatementRequest.Key, updateblockers.LabelBlocker)
+		labels := sets.New[string](impactStatementRequest.Fields.Labels...).Insert(updateblockers.LabelBlocker)
 		if _, err := jiraClient.UpdateIssue(&jira.Issue{
 			Key:    impactStatementRequest.Key,
 			Fields: &jira.IssueFields{Labels: sets.List(labels)},
@@ -203,14 +198,14 @@ func main() {
 			logrus.WithError(err).Fatal("cannot walk graph repository")
 		}
 
-		bugCommentBody := fmt.Sprintf(`Based on the impact assessment %s, known issue / conditional risk for this bug was added to the update graph. {{%s}} label was added to this card. {{%s}}, {{%s}}, {{%s}} labels were removed if they were present.
+		bugCommentBody := fmt.Sprintf(`Based on the impact assessment %s, known issue / conditional risk for this bug was added to the update graph. {{%s}}, {{%s}} labels were added to this card. {{%s}}, {{%s}}, labels were removed if they were present.
 
 Details of the conditional risk:
 
 * *Name:* {{%s}}
 * *Summary:* %s`,
 			impactStatementRequest.Key,
-			knownIssueAnnounced, upgradeBlockerCandidate, impactStatementRequested, impactStatementProposed,
+			updateblockers.LabelKnownIssueAnnounced, updateblockers.LabelBlocker, updateblockers.LabelImpactStatementRequested, updateblockers.LabelImpactStatementProposed,
 			conditionalRiskName, conditionalRiskSummary)
 
 		bugComment := &jira.Comment{
@@ -236,7 +231,7 @@ Details of the conditional risk:
 
 * *Name:* {{%s}}
 * *Summary:* %s`,
-			upgradeBlockerCandidate, blockerCandidate.Key, conditionalRiskName, conditionalRiskSummary)
+			updateblockers.LabelBlocker, blockerCandidate.Key, conditionalRiskName, conditionalRiskSummary)
 
 		isrComment := &jira.Comment{
 			Author: jira.User{

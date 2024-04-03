@@ -10,11 +10,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/test-infra/prow/flagutil"
-)
 
-const (
-	impactStatementRequested = "ImpactStatementRequested"
-	impactStatementProposed  = "ImpactStatementProposed"
+	"github.com/petr-muller/ota/internal/updateblockers"
 )
 
 type options struct {
@@ -104,8 +101,8 @@ func main() {
 
 	// logrus.Infof("Adding an informative comment to %s card", blockerCandidate.Key)
 	// TODO(muller): Actually add a comment - but only if we actually change some state
-	logrus.Infof("%s: Removing %s and adding %s", blockerCandidate.Key, impactStatementRequested, impactStatementProposed)
-	labels := sets.New[string](blockerCandidate.Fields.Labels...).Delete(impactStatementRequested).Insert(impactStatementProposed)
+	logrus.Infof("%s: Removing %s and adding %s", blockerCandidate.Key, updateblockers.LabelImpactStatementRequested, updateblockers.LabelImpactStatementProposed)
+	labels := sets.New[string](blockerCandidate.Fields.Labels...).Delete(updateblockers.LabelImpactStatementRequested).Insert(updateblockers.LabelImpactStatementProposed)
 
 	if _, err := jiraClient.UpdateIssue(&jira.Issue{
 		Key:    blockerCandidate.Key,

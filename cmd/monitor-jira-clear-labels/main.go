@@ -10,13 +10,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/test-infra/prow/flagutil"
-)
 
-const (
-	upgradeBlockerCandidate  = "UpgradeBlocker"
-	impactStatementRequested = "ImpactStatementRequested"
-	impactStatementProposed  = "ImpactStatementProposed"
-	knownIssueAnnounced      = "UpgradeRecommendationBlocked"
+	"github.com/petr-muller/ota/internal/updateblockers"
 )
 
 type options struct {
@@ -71,7 +66,7 @@ func main() {
 	// logrus.Infof("Adding an informative comment to %s card", blockerCandidate.Key)
 	// TODO(muller): Actually add a comment
 
-	toRemove := sets.New(upgradeBlockerCandidate, impactStatementRequested, impactStatementProposed, knownIssueAnnounced)
+	toRemove := sets.New(updateblockers.LabelBlocker, updateblockers.LabelImpactStatementRequested, updateblockers.LabelImpactStatementProposed, updateblockers.LabelKnownIssueAnnounced)
 
 	logrus.Infof("Clearing OTA labels (%s) from %s card", strings.Join(sets.List(toRemove), ","), blockerCandidate.Key)
 	labels := sets.New[string](blockerCandidate.Fields.Labels...).Difference(toRemove)

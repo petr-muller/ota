@@ -9,13 +9,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/test-infra/prow/flagutil"
-)
 
-const (
-	upgradeBlockerCandidate  = "UpgradeBlocker"
-	impactStatementRequested = "ImpactStatementRequested"
-	impactStatementProposed  = "ImpactStatementProposed"
-	knownIssueAnnounced      = "UpgradeRecommendationBlocked"
+	"github.com/petr-muller/ota/internal/updateblockers"
 )
 
 type options struct {
@@ -87,7 +82,7 @@ func main() {
 			Type:        jira.IssueType{Name: "Spike"},
 			Project:     jira.Project{Key: o.componentProject},
 			Priority:    &jira.Priority{Name: "Critical"},
-			Labels:      []string{upgradeBlockerCandidate},
+			Labels:      []string{updateblockers.LabelBlocker},
 			Description: fmt.Sprintf(descriptionTemplate, ocpbugsId, ocpbugsId),
 			Summary:     fmt.Sprintf("Impact statement request for %s %s", ocpbugsId, blockerCandidate.Fields.Summary),
 			Reporter:    &jira.User{Name: "afri@afri.cz"}, // TODO(muller): Use the user associated with the Jira client
@@ -143,8 +138,8 @@ func main() {
 	logrus.Infof("Adding the ImpactStatementRequested label to %s card", blockerCandidate.Key)
 
 	labels := sets.New[string](blockerCandidate.Fields.Labels...)
-	labels.Insert(impactStatementRequested)
-	labels.Insert(upgradeBlockerCandidate)
+	labels.Insert(updateblockers.LabelImpactStatementRequested)
+	labels.Insert(updateblockers.LabelBlocker)
 
 	if _, err := jiraClient.UpdateIssue(&jira.Issue{
 		Key:    blockerCandidate.Key,
