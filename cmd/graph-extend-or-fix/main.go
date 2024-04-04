@@ -113,7 +113,7 @@ func main() {
 		logrus.WithError(err).Fatal("cannot create Jira client")
 	}
 
-	logrus.Infof("Obtaining (likely) impact statement card %s", impactStatementCard)
+	logrus.Infof("Obtaining (likely) impact statement card %s and process its linked bugs", impactStatementCard)
 	blockerCandidate, err := jiraClient.GetIssue(impactStatementCard)
 	if err != nil {
 		logrus.WithError(err).Fatal("cannot get issue")
@@ -121,6 +121,7 @@ func main() {
 	seen := sets.New[string]()
 	bugs := map[string]*jira.Issue{}
 	worklist := map[string]*jira.Issue{impactStatementCard: blockerCandidate}
+	directBlocks := sets.New[string]()
 
 	for len(worklist) > 0 {
 		var key string
@@ -138,7 +139,7 @@ func main() {
 		}
 		seen.Insert(key)
 
-		logrus.Infof("%s: Processing linked cards", key)
+		fmt.Printf("%s ", key)
 		if strings.HasPrefix(key, "OCPBUGS-") {
 			logrus.Tracef("%s: Found a bug card", key)
 			bugs[key] = card
@@ -152,6 +153,9 @@ func main() {
 						logrus.WithError(err).Fatal("cannot get issue")
 					}
 					worklist[outward.Key] = linkedIssue
+					if key == blockerCandidate.Key && link.Type.Outward == "blocks" {
+						directBlocks.Insert(outward.Key)
+					}
 				} else {
 					logrus.Tracef("%s: not following a non-bug link '%s %s'", key, link.Type.Outward, outward.Key)
 				}
@@ -163,12 +167,16 @@ func main() {
 						logrus.WithError(err).Fatal("cannot get issue")
 					}
 					worklist[inward.Key] = linkedIssue
+					if key == blockerCandidate.Key && link.Type.Inward == "blocks" {
+						directBlocks.Insert(inward.Key)
+					}
 				} else {
 					logrus.Tracef("%s: not following a non-bug link '%s %s'", key, link.Type.Inward, inward.Key)
 				}
 			}
 		}
 	}
+	fmt.Printf("\n")
 
 	logrus.Infof("Found %d bug cards", len(bugs))
 	for key, bug := range bugs {
@@ -180,11 +188,16 @@ func main() {
 			}
 		}
 
+		direct := ""
+		if directBlocks.Has(key) {
+			direct = "x"
+		}
 		// TODO(muller): Tabulate better, sort etc
-		fmt.Printf("%s\t%s\t%-12s\t%s\n", key, targetVersion, bug.Fields.Status.Name, bug.Fields.Summary)
+		fmt.Printf("%s\t%-2s\t%s\t%-12s\t%s\n", key, direct, targetVersion, bug.Fields.Status.Name, bug.Fields.Summary)
 	}
 
 	// TODO(muller): Infer whether the bug is likely fixed or not
+	// Likely only follow direct block links from the impact statement card and their clones
 	// Unfixed (up to MOFIFIED?) bugs in higher or or equal versions are likely unfixed
 	// No unfixed (up to MODIFIED) bugs in higher or equal versions are likely fixed
 	// ON_QA and VERIFIED are hard to reason about: maybe check them in release controller diffs?
