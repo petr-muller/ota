@@ -81,6 +81,14 @@ func main() {
 	switch len(impactStatementRequestCandidates) {
 	case 0:
 		logrus.Warning("No impact statement requests found")
+		if o.impactStatementRequestCard != "" {
+			logrus.Infof("%s: Attempting to get the impact statement request card", o.impactStatementRequestCard)
+			if isr, err := jiraClient.GetIssue(o.impactStatementRequestCard); err == nil {
+				impactStatementRequest = isr
+			} else {
+				logrus.WithError(err).Error("Cannot get the impact statement request card")
+			}
+		}
 	case 1:
 		impactStatementRequest = impactStatementRequestCandidates[0]
 		logrus.Infof("Found a single impact statement request: %s %s", impactStatementRequest.Key, impactStatementRequest.Fields.Summary)
@@ -114,6 +122,7 @@ func main() {
 	// logrus.Infof("Adding an informative comment to %s card", ...)
 	// TODO(muller): Actually add a comment - but only if we actually change some state
 	if impactStatementRequest != nil {
+		// TODO(muller): Some projects, like API, do not have CODE REVIEW, just Review
 		logrus.Infof("%s: Moving Impact Statement Request card to CODE REVIEW", impactStatementRequest.Key)
 		if err := jiraClient.UpdateStatus(impactStatementRequest.Key, "CODE REVIEW"); err != nil {
 			logrus.WithError(err).Fatal("failed to update impact statement request card status to CODE REVIEW")

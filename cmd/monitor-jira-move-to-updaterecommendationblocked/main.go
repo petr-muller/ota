@@ -49,7 +49,7 @@ func gatherOptions() options {
 	var o options
 	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
-	fs.IntVar(&o.bugId, "bug", 0, "The numerical part of the OCPBUGS card to move to ImpactStatementProposed state")
+	fs.IntVar(&o.bugId, "bug", 0, "The numerical part of the OCPBUGS card to move to UpdateRecommendationsBlocked state")
 	fs.StringVar(&o.impactStatementRequestCard, "impact-statement-card", "", "Full JIRA ID of the impact statement request card (optional)")
 	fs.StringVar(&o.riskName, "risk", "", "The name of the conditional risk that was set up")
 
@@ -98,6 +98,7 @@ func main() {
 
 	var impactStatementRequestCandidates []*jira.Issue
 	for _, link := range blockerCandidate.Fields.IssueLinks {
+		// TODO(muller): Handle non-spikes (interactively?)
 		if outward := link.OutwardIssue; outward != nil && !strings.HasPrefix(outward.Key, "OCPBUGS-") && outward.Fields.Type.Name == "Spike" {
 			logrus.Infof("%s is a potential impact statement request (%s %s %s)", outward.Key, ocpbugsId, link.Type.Outward, outward.Key)
 			impactStatementRequestCandidates = append(impactStatementRequestCandidates, outward)
@@ -112,6 +113,14 @@ func main() {
 	switch len(impactStatementRequestCandidates) {
 	case 0:
 		logrus.Warning("No impact statement requests found")
+		if o.impactStatementRequestCard != "" {
+			logrus.Infof("%s: Attempting to get the impact statement request card", o.impactStatementRequestCard)
+			if isr, err := jiraClient.GetIssue(o.impactStatementRequestCard); err == nil {
+				impactStatementRequest = isr
+			} else {
+				logrus.WithError(err).Error("Cannot get the impact statement request card")
+			}
+		}
 	case 1:
 		impactStatementRequest = impactStatementRequestCandidates[0]
 		logrus.Infof("Found a single impact statement request: %s %s", impactStatementRequest.Key, impactStatementRequest.Fields.Summary)

@@ -22,6 +22,8 @@ type options struct {
 	lastVersion string
 	newVersion  string
 
+	action string
+
 	jira flagutil.JiraOptions
 }
 
@@ -33,6 +35,7 @@ func gatherOptions() options {
 	fs.StringVar(&o.risk, "risk", "", "The identifier of the risk to extend or declare fixed")
 	fs.StringVar(&o.lastVersion, "last", "", "Most recent version where the risk still exists")
 	fs.StringVar(&o.newVersion, "new", "", "New version where the risk should either be extended or declared fixed")
+	fs.StringVar(&o.action, "do", "", "Action to perform: 'extend' or declare 'fix'. Default is to do nothing")
 
 	o.jira.AddFlags(fs)
 
@@ -58,6 +61,11 @@ func (o *options) validate() error {
 
 	if o.newVersion == "" {
 		return fmt.Errorf("--new must be specified and nonempty")
+	}
+
+	if o.action != "" && o.action != "extend" && o.action != "fix" {
+		return fmt.Errorf("--do must be 'extend' or 'fix' when specified")
+
 	}
 
 	return o.jira.Validate(false)
@@ -91,13 +99,13 @@ func main() {
 
 	edgesDirectory := filepath.Join(o.graphRepositoryPath, "blocked-edges")
 	lastVersionBlockPath := filepath.Join(edgesDirectory, fmt.Sprintf("%s-%s.yaml", o.lastVersion, o.risk))
-	lastVersionBlockRaw, err := os.ReadFile(lastVersionBlockPath)
+	updatedEdgeRaw, err := os.ReadFile(lastVersionBlockPath)
 	if err != nil {
 		logrus.WithError(err).Fatal("cannot read source file")
 	}
 
 	var lastVersionBlock ConditionallyBlockedEdge
-	if err := yaml.Unmarshal(lastVersionBlockRaw, &lastVersionBlock); err != nil {
+	if err := yaml.Unmarshal(updatedEdgeRaw, &lastVersionBlock); err != nil {
 		logrus.WithError(err).Fatal("cannot unmarshal source file")
 	}
 
@@ -201,6 +209,31 @@ func main() {
 	// Unfixed (up to MOFIFIED?) bugs in higher or or equal versions are likely unfixed
 	// No unfixed (up to MODIFIED) bugs in higher or equal versions are likely fixed
 	// ON_QA and VERIFIED are hard to reason about: maybe check them in release controller diffs?
+
+	var destinationPath string
+	updatedEdge := lastVersionBlock
+	switch o.action {
+	case "":
+		logrus.Infof("No action specified, doing nothing")
+		return
+	case "extend":
+		logrus.Infof("Extending `%s` risk to %s", o.risk, o.newVersion)
+		updatedEdge.To = o.newVersion
+		destinationPath = filepath.Join(edgesDirectory, fmt.Sprintf("%s-%s.yaml", o.newVersion, o.risk))
+	case "fix":
+		logrus.Infof("Declaring the risk %s fixed in %s", o.risk, o.newVersion)
+		updatedEdge.FixedIn = o.newVersion
+		destinationPath = lastVersionBlockPath
+	}
+
+	updatedEdgeRaw, err = yaml.Marshal(updatedEdge)
+	if err != nil {
+		logrus.WithError(err).Fatal("cannot marshal blocked edge")
+	}
+	if err := os.WriteFile(destinationPath, updatedEdgeRaw, 0644); err != nil {
+		logrus.WithError(err).Fatal("cannot write blocked edge")
+	}
+
 }
 
 // Stolen from openshift-eng/jira-lifecycle-plugin
