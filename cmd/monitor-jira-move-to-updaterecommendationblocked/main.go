@@ -19,7 +19,6 @@ import (
 type options struct {
 	bugId                      int
 	impactStatementRequestCard string
-	riskName                   string
 
 	graphRepositoryPath string
 
@@ -51,7 +50,6 @@ func gatherOptions() options {
 
 	fs.IntVar(&o.bugId, "bug", 0, "The numerical part of the OCPBUGS card to move to UpdateRecommendationsBlocked state")
 	fs.StringVar(&o.impactStatementRequestCard, "impact-statement-card", "", "Full JIRA ID of the impact statement request card (optional)")
-	fs.StringVar(&o.riskName, "risk", "", "The name of the conditional risk that was set up")
 
 	fs.StringVar(&o.graphRepositoryPath, "graph-repository-path", "", "The path to the Cincinnati graph repository")
 
