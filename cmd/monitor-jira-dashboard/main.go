@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"sigs.k8s.io/prow/pkg/flagutil"
+
+	"github.com/petr-muller/ota/internal/flagutil"
 )
 
 const (
@@ -37,11 +38,12 @@ func gatherOptions() options {
 }
 
 func (o *options) validate() error {
-	return o.jira.Validate(false)
+	return o.jira.Validate()
 }
 
 func main() {
 	// TODO(muller): Cobrify as ota monitor dashboard
+
 	o := gatherOptions()
 	if err := o.validate(); err != nil {
 		logrus.WithError(err).Fatal("invalid options")

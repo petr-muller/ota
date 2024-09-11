@@ -12,7 +12,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"sigs.k8s.io/prow/pkg/flagutil"
+
+	"github.com/petr-muller/ota/internal/flagutil"
 )
 
 type options struct {
@@ -68,7 +69,7 @@ func (o *options) validate() error {
 
 	}
 
-	return o.jira.Validate(false)
+	return o.jira.Validate()
 }
 
 type PromQLQuery struct {

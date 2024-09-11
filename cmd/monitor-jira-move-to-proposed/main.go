@@ -9,8 +9,8 @@ import (
 	"github.com/andygrunwald/go-jira"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"sigs.k8s.io/prow/pkg/flagutil"
 
+	"github.com/petr-muller/ota/internal/flagutil"
 	"github.com/petr-muller/ota/internal/updateblockers"
 )
 
@@ -42,7 +42,7 @@ func (o *options) validate() error {
 		return fmt.Errorf("--bug must be specified and nonzero")
 	}
 
-	return o.jira.Validate(false)
+	return o.jira.Validate()
 }
 
 func main() {
