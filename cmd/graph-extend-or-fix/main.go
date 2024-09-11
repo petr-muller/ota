@@ -147,6 +147,11 @@ func main() {
 		}
 		seen.Insert(key)
 
+		if card == nil {
+			// Should not happen
+			continue
+		}
+
 		fmt.Printf("%s ", key)
 		if strings.HasPrefix(key, "OCPBUGS-") {
 			logrus.Tracef("%s: Found a bug card", key)
@@ -206,7 +211,7 @@ func main() {
 
 	// TODO(muller): Infer whether the bug is likely fixed or not
 	// Likely only follow direct block links from the impact statement card and their clones
-	// Unfixed (up to MOFIFIED?) bugs in higher or or equal versions are likely unfixed
+	// Unfixed (up to MODIFIED?) bugs in higher or or equal versions are likely unfixed
 	// No unfixed (up to MODIFIED) bugs in higher or equal versions are likely fixed
 	// ON_QA and VERIFIED are hard to reason about: maybe check them in release controller diffs?
 

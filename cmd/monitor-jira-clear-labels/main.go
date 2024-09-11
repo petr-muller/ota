@@ -66,7 +66,7 @@ func main() {
 	// logrus.Infof("Adding an informative comment to %s card", blockerCandidate.Key)
 	// TODO(muller): Actually add a comment
 
-	toRemove := sets.New(updateblockers.LabelBlocker, updateblockers.LabelImpactStatementRequested, updateblockers.LabelImpactStatementProposed, updateblockers.LabelKnownIssueAnnounced)
+	toRemove := sets.New[string](updateblockers.LabelBlocker, updateblockers.LabelImpactStatementRequested, updateblockers.LabelImpactStatementProposed, updateblockers.LabelKnownIssueAnnounced)
 
 	logrus.Infof("Clearing OTA labels (%s) from %s card", strings.Join(sets.List(toRemove), ","), blockerCandidate.Key)
 	labels := sets.New[string](blockerCandidate.Fields.Labels...).Difference(toRemove)
