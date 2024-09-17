@@ -23,7 +23,8 @@ type options struct {
 	lastVersion string
 	newVersion  string
 
-	action string
+	action      string
+	skipInspect bool
 
 	jira flagutil.JiraOptions
 }
@@ -37,6 +38,7 @@ func gatherOptions() options {
 	fs.StringVar(&o.lastVersion, "last", "", "Most recent version where the risk still exists")
 	fs.StringVar(&o.newVersion, "new", "", "New version where the risk should either be extended or declared fixed")
 	fs.StringVar(&o.action, "do", "", "Action to perform: 'extend' or declare 'fix'. Default is to do nothing")
+	fs.BoolVar(&o.skipInspect, "skip-inspect", false, "Skip inspecting the bug state and just perform the action")
 
 	o.jira.AddFlags(fs)
 
@@ -110,104 +112,106 @@ func main() {
 		logrus.WithError(err).Fatal("cannot unmarshal source file")
 	}
 
-	impactStatementCard := lastVersionBlock.URL
-	if !strings.HasPrefix(impactStatementCard, "https://issues.redhat.com/browse/") {
-		logrus.Warning("Blocked edge reference URL %s is not a Jira card", impactStatementCard)
-		return
-	}
-	impactStatementCard = strings.TrimPrefix(impactStatementCard, "https://issues.redhat.com/browse/")
+	if !o.skipInspect {
+		impactStatementCard := lastVersionBlock.URL
+		if !strings.HasPrefix(impactStatementCard, "https://issues.redhat.com/browse/") {
+			logrus.Warning("Blocked edge reference URL %s is not a Jira card", impactStatementCard)
+			return
+		}
+		impactStatementCard = strings.TrimPrefix(impactStatementCard, "https://issues.redhat.com/browse/")
 
-	jiraClient, err := o.jira.Client()
-	if err != nil {
-		logrus.WithError(err).Fatal("cannot create Jira client")
-	}
-
-	logrus.Infof("Obtaining (likely) impact statement card %s and process its linked bugs", impactStatementCard)
-	blockerCandidate, err := jiraClient.GetIssue(impactStatementCard)
-	if err != nil {
-		logrus.WithError(err).Fatal("cannot get issue")
-	}
-	seen := sets.New[string]()
-	bugs := map[string]*jira.Issue{}
-	worklist := map[string]*jira.Issue{impactStatementCard: blockerCandidate}
-	directBlocks := sets.New[string]()
-
-	for len(worklist) > 0 {
-		var key string
-		var card *jira.Issue
-		for k, v := range worklist {
-			key = k
-			card = v
-			delete(worklist, key)
-			break
+		jiraClient, err := o.jira.Client()
+		if err != nil {
+			logrus.WithError(err).Fatal("cannot create Jira client")
 		}
 
-		if seen.Has(key) {
-			logrus.Tracef("%s: Skipping already seen card", key)
-			continue
+		logrus.Infof("Obtaining (likely) impact statement card %s and process its linked bugs", impactStatementCard)
+		blockerCandidate, err := jiraClient.GetIssue(impactStatementCard)
+		if err != nil {
+			logrus.WithError(err).Fatal("cannot get issue")
 		}
-		seen.Insert(key)
+		seen := sets.New[string]()
+		bugs := map[string]*jira.Issue{}
+		worklist := map[string]*jira.Issue{impactStatementCard: blockerCandidate}
+		directBlocks := sets.New[string]()
 
-		if card == nil {
-			// Should not happen
-			continue
-		}
+		for len(worklist) > 0 {
+			var key string
+			var card *jira.Issue
+			for k, v := range worklist {
+				key = k
+				card = v
+				delete(worklist, key)
+				break
+			}
 
-		fmt.Printf("%s ", key)
-		if strings.HasPrefix(key, "OCPBUGS-") {
-			logrus.Tracef("%s: Found a bug card", key)
-			bugs[key] = card
-		}
+			if seen.Has(key) {
+				logrus.Tracef("%s: Skipping already seen card", key)
+				continue
+			}
+			seen.Insert(key)
 
-		for _, link := range card.Fields.IssueLinks {
-			if outward := link.OutwardIssue; outward != nil {
-				if strings.HasPrefix(outward.Key, "OCPBUGS-") {
-					linkedIssue, err := jiraClient.GetIssue(outward.Key)
-					if err != nil {
-						logrus.WithError(err).Fatal("cannot get issue")
+			if card == nil {
+				// Should not happen
+				continue
+			}
+
+			fmt.Printf("%s ", key)
+			if strings.HasPrefix(key, "OCPBUGS-") {
+				logrus.Tracef("%s: Found a bug card", key)
+				bugs[key] = card
+			}
+
+			for _, link := range card.Fields.IssueLinks {
+				if outward := link.OutwardIssue; outward != nil {
+					if strings.HasPrefix(outward.Key, "OCPBUGS-") {
+						linkedIssue, err := jiraClient.GetIssue(outward.Key)
+						if err != nil {
+							logrus.WithError(err).Fatal("cannot get issue")
+						}
+						worklist[outward.Key] = linkedIssue
+						if key == blockerCandidate.Key && link.Type.Outward == "blocks" {
+							directBlocks.Insert(outward.Key)
+						}
+					} else {
+						logrus.Tracef("%s: not following a non-bug link '%s %s'", key, link.Type.Outward, outward.Key)
 					}
-					worklist[outward.Key] = linkedIssue
-					if key == blockerCandidate.Key && link.Type.Outward == "blocks" {
-						directBlocks.Insert(outward.Key)
+				}
+				if inward := link.InwardIssue; inward != nil {
+					if strings.HasPrefix(inward.Key, "OCPBUGS-") {
+						linkedIssue, err := jiraClient.GetIssue(inward.Key)
+						if err != nil {
+							logrus.WithError(err).Fatal("cannot get issue")
+						}
+						worklist[inward.Key] = linkedIssue
+						if key == blockerCandidate.Key && link.Type.Inward == "blocks" {
+							directBlocks.Insert(inward.Key)
+						}
+					} else {
+						logrus.Tracef("%s: not following a non-bug link '%s %s'", key, link.Type.Inward, inward.Key)
 					}
-				} else {
-					logrus.Tracef("%s: not following a non-bug link '%s %s'", key, link.Type.Outward, outward.Key)
 				}
 			}
-			if inward := link.InwardIssue; inward != nil {
-				if strings.HasPrefix(inward.Key, "OCPBUGS-") {
-					linkedIssue, err := jiraClient.GetIssue(inward.Key)
-					if err != nil {
-						logrus.WithError(err).Fatal("cannot get issue")
-					}
-					worklist[inward.Key] = linkedIssue
-					if key == blockerCandidate.Key && link.Type.Inward == "blocks" {
-						directBlocks.Insert(inward.Key)
-					}
-				} else {
-					logrus.Tracef("%s: not following a non-bug link '%s %s'", key, link.Type.Inward, inward.Key)
+		}
+		fmt.Printf("\n")
+
+		logrus.Infof("Found %d bug cards", len(bugs))
+		for key, bug := range bugs {
+			targetVersion := ""
+			if items, err := getIssueTargetVersion(bug); err == nil && len(items) > 0 {
+				targetVersion = items[0].Name
+				if len(items) > 1 {
+					logrus.Warningf("%s: Found multiple target versions: %v", key, items)
 				}
 			}
-		}
-	}
-	fmt.Printf("\n")
 
-	logrus.Infof("Found %d bug cards", len(bugs))
-	for key, bug := range bugs {
-		targetVersion := ""
-		if items, err := getIssueTargetVersion(bug); err == nil && len(items) > 0 {
-			targetVersion = items[0].Name
-			if len(items) > 1 {
-				logrus.Warningf("%s: Found multiple target versions: %v", key, items)
+			direct := ""
+			if directBlocks.Has(key) {
+				direct = "x"
 			}
+			// TODO(muller): Tabulate better, sort etc
+			fmt.Printf("%s\t%-2s\t%s\t%-12s\t%s\n", key, direct, targetVersion, bug.Fields.Status.Name, bug.Fields.Summary)
 		}
-
-		direct := ""
-		if directBlocks.Has(key) {
-			direct = "x"
-		}
-		// TODO(muller): Tabulate better, sort etc
-		fmt.Printf("%s\t%-2s\t%s\t%-12s\t%s\n", key, direct, targetVersion, bug.Fields.Status.Name, bug.Fields.Summary)
 	}
 
 	// TODO(muller): Infer whether the bug is likely fixed or not
