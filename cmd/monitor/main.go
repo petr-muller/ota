@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/andygrunwald/go-jira"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -36,11 +37,12 @@ type jiraItems struct {
 	fetched bool
 	items   []jira.Issue
 	table   table.Model
+	spinner spinner.Model
 }
 
 func (i jiraItems) View() string {
 	if !i.fetched {
-		return "Fetching..."
+		return i.spinner.View()
 	}
 
 	return i.table.View()
@@ -49,7 +51,8 @@ func (i jiraItems) View() string {
 func initialModel() model {
 	return model{
 		needImpactStatementRequest: jiraItems{
-			query: "project = OCPBUGS AND labels in (UpgradeBlocker) AND labels not in (ImpactStatementRequested, ImpactStatementProposed, UpdateRecommendationsBlocked)",
+			query:   "project = OCPBUGS AND labels in (UpgradeBlocker) AND labels not in (ImpactStatementRequested, ImpactStatementProposed, UpdateRecommendationsBlocked)",
+			spinner: spinner.New(spinner.WithSpinner(spinner.Points)),
 		},
 	}
 }
@@ -141,7 +144,7 @@ func makeJiraClientCmd(o options) tea.Cmd {
 }
 
 func (m model) Init() tea.Cmd {
-	return gatherOptions
+	return tea.Batch(gatherOptions, m.needImpactStatementRequest.spinner.Tick)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -161,9 +164,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	var cmds []tea.Cmd
 	var cmd tea.Cmd
+
 	m.needImpactStatementRequest.table, cmd = m.needImpactStatementRequest.table.Update(msg)
-	return m, cmd
+	cmds = append(cmds, cmd)
+	m.needImpactStatementRequest.spinner, cmd = m.needImpactStatementRequest.spinner.Update(msg)
+	cmds = append(cmds, cmd)
+	return m, tea.Batch(cmds...)
 }
 
 func (m model) View() string {
