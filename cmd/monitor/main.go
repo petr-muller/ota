@@ -4,7 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -30,6 +32,7 @@ type jiraClientMsg jiraClient
 
 type jiraClient interface {
 	SearchWithContext(context.Context, string, *jira.SearchOptions) ([]jira.Issue, *jira.Response, error)
+	JiraURL() string
 }
 
 type jiraItems struct {
@@ -38,6 +41,8 @@ type jiraItems struct {
 	items   []jira.Issue
 	table   table.Model
 	spinner spinner.Model
+
+	getUrlForItem func(key string) string
 }
 
 func (i jiraItems) View() string {
@@ -46,6 +51,16 @@ func (i jiraItems) View() string {
 	}
 
 	return i.table.View()
+}
+
+func (i jiraItems) openSelectedIssue() tea.Cmd {
+	return func() tea.Msg {
+		if i.table.Cursor() >= 0 {
+			issue := i.items[i.table.Cursor()]
+			_ = exec.Command("xdg-open", i.getUrlForItem(issue.Key)).Start()
+		}
+		return nil
+	}
 }
 
 func initialModel() model {
@@ -62,6 +77,16 @@ type needImpactStatementRequestMsg jiraItems
 func refreshNeedImpactStatementRequest(jiras jiraItems, jira jiraClient) tea.Cmd {
 	return func() tea.Msg {
 		now := time.Now()
+
+		jiraUrl := jira.JiraURL()
+
+		jiras.getUrlForItem = func(key string) string {
+			itemUrl, err := url.JoinPath(jiraUrl, "browse", key)
+			if err != nil {
+				panic(err)
+			}
+			return itemUrl
+		}
 
 		items, _, err := jira.SearchWithContext(context.Background(), jiras.query, nil)
 		if err != nil {
@@ -161,6 +186,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "enter":
+			if m.needImpactStatementRequest.fetched {
+				return m, m.needImpactStatementRequest.openSelectedIssue()
+			}
 		}
 	}
 
