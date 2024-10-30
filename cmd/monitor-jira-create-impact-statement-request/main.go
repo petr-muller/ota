@@ -85,7 +85,6 @@ func main() {
 			Labels:      []string{updateblockers.LabelBlocker},
 			Description: fmt.Sprintf(descriptionTemplate, ocpbugsId, ocpbugsId),
 			Summary:     fmt.Sprintf("Impact statement request for %s %s", ocpbugsId, blockerCandidate.Fields.Summary),
-			Reporter:    &jira.User{Name: "afri@afri.cz"}, // TODO(muller): Use the user associated with the Jira client
 		},
 	}
 	if assignee != nil {
