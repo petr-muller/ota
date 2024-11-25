@@ -7,7 +7,7 @@ toolchain go1.22.6
 require (
 	github.com/andygrunwald/go-jira v1.16.0
 	github.com/charmbracelet/bubbles v0.20.0
-	github.com/charmbracelet/bubbletea v1.2.2
+	github.com/charmbracelet/bubbletea v1.2.4
 	github.com/sirupsen/logrus v1.9.3
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/apimachinery v0.31.2
