@@ -72,7 +72,7 @@ func main() {
 
 	assignee := blockerCandidate.Fields.Assignee
 	if assignee == nil {
-		logrus.Warning("Issue %s has no assignee", ocpbugsId)
+		logrus.Warnf("Issue %s has no assignee", ocpbugsId)
 	} else {
 		logrus.Infof("Issue %s is assigned to %s", ocpbugsId, assignee.Name)
 	}

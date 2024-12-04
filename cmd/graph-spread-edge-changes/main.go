@@ -89,29 +89,29 @@ func main() {
 
 	if err := filepath.WalkDir(edgesDirectory, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			logrus.WithError(err).Error("Failure when walking items in graph repository directory %s", edgesDirectory)
+			logrus.WithError(err).Errorf("Failure when walking items in graph repository directory %s", edgesDirectory)
 			return err
 		}
 
 		if d.IsDir() {
-			logrus.Trace("Skipping (unexpected) directory %s", path)
+			logrus.Tracef("Skipping (unexpected) directory %s", path)
 			return nil
 		}
 
 		targetRaw, err := os.ReadFile(path)
 		if err != nil {
-			logrus.WithError(err).Error("Cannot read target file %s", path)
+			logrus.WithError(err).Errorf("Cannot read target file %s", path)
 			return err
 		}
 
 		var target ConditionallyBlockedEdge
 		if err := yaml.Unmarshal(targetRaw, &target); err != nil {
-			logrus.WithError(err).Error("Cannot unmarshal target file %s", path)
+			logrus.WithError(err).Errorf("Cannot unmarshal target file %s", path)
 			return err
 		}
 
 		if target.Name != o.risk {
-			logrus.Trace("Skipping target file %s because it does not match the risk %s", path, o.risk)
+			logrus.Tracef("Skipping target file %s because it does not match the risk %s", path, o.risk)
 			return nil
 		}
 
@@ -122,7 +122,7 @@ func main() {
 
 		targetFile, err := os.Create(path)
 		if err != nil {
-			logrus.WithError(err).Error("Cannot open target file %s")
+			logrus.WithError(err).Errorf("Cannot open target file %s", path)
 		}
 		defer func(targetFile *os.File) {
 			_ = targetFile.Close()
@@ -131,7 +131,7 @@ func main() {
 		encoder := yaml.NewEncoder(targetFile)
 		encoder.SetIndent(1)
 		if err := encoder.Encode(target); err != nil {
-			logrus.WithError(err).Error("Cannot marshal updated edge into target file %s", path)
+			logrus.WithError(err).Errorf("Cannot marshal updated edge into target file %s", path)
 		}
 		return err
 	}); err != nil {

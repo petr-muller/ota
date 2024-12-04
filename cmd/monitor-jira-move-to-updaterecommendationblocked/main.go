@@ -170,7 +170,7 @@ func main() {
 		edgesDirectory := filepath.Join(o.graphRepositoryPath, "blocked-edges")
 		if err := filepath.WalkDir(edgesDirectory, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
-				logrus.WithError(err).Error("Failure when walking items in graph repository directory %s", edgesDirectory)
+				logrus.WithError(err).Errorf("Failure when walking items in graph repository directory %s", edgesDirectory)
 				return err
 			}
 
@@ -179,19 +179,19 @@ func main() {
 			}
 
 			if d.IsDir() {
-				logrus.Trace("Skipping (unexpected) directory %s", path)
+				logrus.Tracef("Skipping (unexpected) directory %s", path)
 				return nil
 			}
 
 			edgeRaw, err := os.ReadFile(path)
 			if err != nil {
-				logrus.WithError(err).Error("Cannot read target file %s", path)
+				logrus.WithError(err).Errorf("Cannot read target file %s", path)
 				return err
 			}
 
 			var edge ConditionallyBlockedEdge
 			if err := yaml.Unmarshal(edgeRaw, &edge); err != nil {
-				logrus.WithError(err).Error("Cannot unmarshal target file %s", path)
+				logrus.WithError(err).Errorf("Cannot unmarshal target file %s", path)
 				return err
 			}
 

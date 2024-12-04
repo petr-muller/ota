@@ -115,7 +115,7 @@ func main() {
 	if !o.skipInspect {
 		impactStatementCard := lastVersionBlock.URL
 		if !strings.HasPrefix(impactStatementCard, "https://issues.redhat.com/browse/") {
-			logrus.Warning("Blocked edge reference URL %s is not a Jira card", impactStatementCard)
+			logrus.Warnf("Blocked edge reference URL %s is not a Jira card", impactStatementCard)
 			return
 		}
 		impactStatementCard = strings.TrimPrefix(impactStatementCard, "https://issues.redhat.com/browse/")
