@@ -1,7 +1,7 @@
 module github.com/petr-muller/ota
 
 go 1.22.3
-toolchain go1.23.4
+toolchain go1.24.1
 
 require (
 	github.com/andygrunwald/go-jira v1.16.0
@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.4
 	github.com/sirupsen/logrus v1.9.3
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/apimachinery v0.32.2
+	k8s.io/apimachinery v0.32.3
 	sigs.k8s.io/prow v0.0.0-20240910125013-1e9790f40f9f
 )
 
