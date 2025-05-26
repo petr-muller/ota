@@ -220,6 +220,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "q", "ctrl+c":
 				return m, tea.Quit
+			case "s":
+				// Skip this card - move to next card without collecting data
+				m.currentCard++
+				if m.currentCard >= len(m.cards) {
+					m.currentStep = stepComplete
+					return m, m.saveResults()
+				}
+				return m, nil
 			case "enter":
 				if selected := m.qeList.SelectedItem(); selected != nil {
 					m.cardData[m.currentCard].QEInvolvement = selected.(listItem).title
@@ -340,7 +348,15 @@ func (m *model) updateTechList() {
 
 func (m model) saveResults() tea.Cmd {
 	return func() tea.Msg {
-		summary := SprintSummary{Cards: m.cardData}
+		// Filter out skipped cards (those without QE involvement data)
+		var completedCards []CardData
+		for _, card := range m.cardData {
+			if card.QEInvolvement != "" {
+				completedCards = append(completedCards, card)
+			}
+		}
+		
+		summary := SprintSummary{Cards: completedCards}
 
 		data, err := yaml.Marshal(summary)
 		if err != nil {
@@ -383,7 +399,14 @@ func (m model) View() string {
 		if len(m.cards) == 0 {
 			return "No cards found in current sprint."
 		}
-		return fmt.Sprintf("Summary saved to %s!\n\nProcessed %d cards.", m.outputFile, len(m.cards))
+		completedCount := 0
+		for _, card := range m.cardData {
+			if card.QEInvolvement != "" {
+				completedCount++
+			}
+		}
+		skippedCount := len(m.cards) - completedCount
+		return fmt.Sprintf("Summary saved to %s!\n\nProcessed %d cards, skipped %d cards.", m.outputFile, completedCount, skippedCount)
 	}
 
 	if len(m.cards) == 0 {
@@ -406,7 +429,7 @@ func (m model) View() string {
 	switch m.currentStep {
 	case stepQEInvolvement:
 		content = m.qeList.View()
-		instructions = "Use ↑/↓ to navigate, Enter to select, q to quit"
+		instructions = "Use ↑/↓ to navigate, Enter to select, 's' to skip card, q to quit"
 
 	case stepTechDomain:
 		if m.customTechInput {
