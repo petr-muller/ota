@@ -23,18 +23,12 @@ import (
 
 type options struct {
 	jira   flagutil.JiraOptions
-	board  string
+	filter string
 	output string
 }
 
 func (o *options) validate() error {
-	if err := o.jira.Validate(); err != nil {
-		return err
-	}
-	if o.board == "" {
-		return fmt.Errorf("board ID is required")
-	}
-	return nil
+	return o.jira.Validate()
 }
 
 type CardData struct {
@@ -84,7 +78,7 @@ var (
 
 type model struct {
 	jira       jiraClient
-	boardID    string
+	filterName string
 	outputFile string
 
 	cards       []jira.Issue
@@ -114,7 +108,7 @@ type errorMsg struct {
 	err error
 }
 
-func initialModel(jira jiraClient, boardID, outputFile string) model {
+func initialModel(jira jiraClient, filterName, outputFile string) model {
 	s := spinner.New()
 	s.Spinner = spinner.Points
 
@@ -152,7 +146,7 @@ func initialModel(jira jiraClient, boardID, outputFile string) model {
 
 	return model{
 		jira:         jira,
-		boardID:      boardID,
+		filterName:   filterName,
 		outputFile:   outputFile,
 		currentStep:  stepLoading,
 		spinner:      s,
@@ -172,10 +166,10 @@ func (i listItem) Title() string       { return i.title }
 func (i listItem) Description() string { return "" }
 func (i listItem) FilterValue() string { return i.title }
 
-func loadCards(jira jiraClient, boardID string) tea.Cmd {
+func loadCards(jira jiraClient, filterName string) tea.Cmd {
 	return func() tea.Msg {
-		// Query for current sprint in the board
-		jql := fmt.Sprintf("project in (OCPBUGS) AND Sprint in openSprints() AND Sprint in (boardSprints(\"%s\"))", boardID)
+		// Query for current sprint with filter
+		jql := fmt.Sprintf(`Sprint in openSprints() AND filter = "%s"`, filterName)
 
 		issues, _, err := jira.SearchWithContext(context.Background(), jql, nil)
 		if err != nil {
@@ -189,7 +183,7 @@ func loadCards(jira jiraClient, boardID string) tea.Cmd {
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
-		loadCards(m.jira, m.boardID),
+		loadCards(m.jira, m.filterName),
 	)
 }
 
@@ -443,7 +437,7 @@ func gatherOptions() options {
 	fs := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
 	o.jira.AddFlags(fs)
-	fs.StringVar(&o.board, "board", "", "Jira board ID (required)")
+	fs.StringVar(&o.filter, "filter", "Filter for OTA", "Jira filter name")
 	fs.StringVar(&o.output, "output", "sprint-summary.yaml", "Output YAML file")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
@@ -464,7 +458,7 @@ func main() {
 		logrus.WithError(err).Fatal("cannot create Jira client")
 	}
 
-	model := initialModel(jiraClient, o.board, o.output)
+	model := initialModel(jiraClient, o.filter, o.output)
 
 	if _, err := tea.NewProgram(model, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Printf("Error running program: %v\n", err)
