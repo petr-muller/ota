@@ -733,6 +733,11 @@ func (m model) View() string {
 		status = currentCard.Fields.Status.Name
 	}
 
+	cardType := "Unknown"
+	if currentCard.Fields.Type.Name != "" {
+		cardType = currentCard.Fields.Type.Name
+	}
+
 	// Add prefilled indicator
 	prefillIndicator := ""
 	if m.cardData[m.currentCard].prefilled {
@@ -744,7 +749,7 @@ func (m model) View() string {
 	}
 
 	// Format card info with aligned values
-	cardLabels := []string{"Key", "Title", "Assignee", "Status"}
+	cardLabels := []string{"Key", "Title", "Assignee", "Status", "Type"}
 	labelWidth := 0
 	for _, label := range cardLabels {
 		if len(label) > labelWidth {
@@ -753,11 +758,12 @@ func (m model) View() string {
 	}
 	labelWidth += 2 // Add space for colon and padding
 
-	cardInfoText := fmt.Sprintf("%s\n%s\n%s\n%s",
+	cardInfoText := fmt.Sprintf("%s\n%s\n%s\n%s\n%s",
 		formatKeyValue("Key", currentCard.Key+prefillIndicator, labelWidth),
 		formatKeyValue("Title", currentCard.Fields.Summary, labelWidth),
 		formatKeyValue("Assignee", assignee, labelWidth),
 		formatKeyValue("Status", status, labelWidth),
+		formatKeyValue("Type", cardType, labelWidth),
 	)
 	cardInfo := cardStyle.Render(cardInfoText)
 
