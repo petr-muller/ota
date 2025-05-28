@@ -454,10 +454,22 @@ func (m model) View() string {
 	currentCard := m.cards[m.currentCard]
 	progress := fmt.Sprintf("Card %d of %d", m.currentCard+1, len(m.cards))
 
+	assignee := "Unassigned"
+	if currentCard.Fields.Assignee != nil {
+		assignee = currentCard.Fields.Assignee.DisplayName
+	}
+
+	status := "Unknown"
+	if currentCard.Fields.Status != nil {
+		status = currentCard.Fields.Status.Name
+	}
+
 	cardInfo := cardStyle.Render(fmt.Sprintf(
-		"Key: %s\nTitle: %s",
+		"Key: %s\nTitle: %s\nAssignee: %s\nStatus: %s",
 		currentCard.Key,
 		currentCard.Fields.Summary,
+		assignee,
+		status,
 	))
 
 	var content string
