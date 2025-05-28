@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/andygrunwald/go-jira"
 	"github.com/charmbracelet/bubbles/list"
@@ -96,6 +98,7 @@ type model struct {
 	cardData        []CardData
 	techDomains     []string
 	customTechInput bool
+	browserOpened   bool
 
 	err error
 }
@@ -107,6 +110,10 @@ type loadedMsg struct {
 type errorMsg struct {
 	err error
 }
+
+type browserOpenedMsg struct{}
+
+type clearBrowserOpenedMsg struct{}
 
 func initialModel(jira jiraClient, filterName, outputFile string) model {
 	s := spinner.New()
@@ -214,12 +221,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		return m, tea.Quit
 
+	case browserOpenedMsg:
+		m.browserOpened = true
+		return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+			return clearBrowserOpenedMsg{}
+		})
+
+	case clearBrowserOpenedMsg:
+		m.browserOpened = false
+		return m, nil
+
 	case tea.KeyMsg:
 		switch m.currentStep {
 		case stepQEInvolvement:
 			switch msg.String() {
 			case "q", "ctrl+c":
 				return m, tea.Quit
+			case "o":
+				return m, m.openBrowser()
 			case "s":
 				// Skip this card - move to next card without collecting data
 				m.currentCard++
@@ -275,6 +294,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch msg.String() {
 				case "q", "ctrl+c":
 					return m, tea.Quit
+				case "o":
+					return m, m.openBrowser()
 				case "enter":
 					if selected := m.techList.SelectedItem(); selected != nil {
 						selectedTitle := selected.(listItem).title
@@ -296,6 +317,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
+			case "o":
+				return m, m.openBrowser()
 			case "ctrl+s":
 				summary := strings.TrimSpace(m.summaryInput.Value())
 				if summary != "" {
@@ -344,6 +367,16 @@ func (m *model) updateTechList() {
 	}
 	techItems[len(m.techDomains)] = listItem{title: "Other (write-in)"}
 	m.techList.SetItems(techItems)
+}
+
+func (m model) openBrowser() tea.Cmd {
+	return func() tea.Msg {
+		if m.currentCard < len(m.cardData) {
+			_ = exec.Command("xdg-open", m.cardData[m.currentCard].URL).Start()
+			return browserOpenedMsg{}
+		}
+		return nil
+	}
 }
 
 func (m model) savePartialResults() tea.Cmd {
@@ -433,7 +466,7 @@ func (m model) View() string {
 	switch m.currentStep {
 	case stepQEInvolvement:
 		content = m.qeList.View()
-		instructions = "Use ↑/↓ to navigate, Enter to select, 's' to skip card, q to quit"
+		instructions = "Use ↑/↓ to navigate, Enter to select, 'o' to open in browser, 's' to skip card, q to quit"
 
 	case stepTechDomain:
 		if m.customTechInput {
@@ -441,19 +474,25 @@ func (m model) View() string {
 			instructions = "Type domain name, Enter to confirm, Esc to cancel"
 		} else {
 			content = m.techList.View()
-			instructions = "Use ↑/↓ to navigate, Enter to select, q to quit"
+			instructions = "Use ↑/↓ to navigate, Enter to select, 'o' to open in browser, q to quit"
 		}
 
 	case stepSummary:
 		content = fmt.Sprintf("Enter summary (about 3 sentences):\n\n%s", m.summaryInput.View())
-		instructions = "Ctrl+S to save and continue, Ctrl+C to quit"
+		instructions = "Ctrl+S to save and continue, 'o' to open in browser, Ctrl+C to quit"
+	}
+
+	statusMsg := ""
+	if m.browserOpened {
+		statusMsg = progressStyle.Render("🌐 Opened in browser") + "\n\n"
 	}
 
 	return fmt.Sprintf(
-		"%s\n\n%s\n\n%s\n\n%s\n\n%s",
+		"%s\n\n%s\n\n%s\n\n%s%s\n\n%s",
 		titleStyle.Render("Sprint Summary Tool"),
 		progressStyle.Render(progress),
 		cardInfo,
+		statusMsg,
 		content,
 		progressStyle.Render(instructions),
 	)
