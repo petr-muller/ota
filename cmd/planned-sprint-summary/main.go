@@ -287,11 +287,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Edit this card even if prefilled
 				if m.cardData[m.currentCard].prefilled {
 					m.cardData[m.currentCard].prefilled = false
-					// Clear the prefilled data to allow fresh input
-					m.cardData[m.currentCard].QEInvolvement = ""
-					m.cardData[m.currentCard].TechDomain = ""
-					m.cardData[m.currentCard].Summary = ""
 					m.cardData[m.currentCard].Skipped = false
+					
+					// Pre-select QE involvement in the list
+					m.preselectQEInvolvement(m.cardData[m.currentCard].QEInvolvement)
+					
+					// Add tech domain to available domains if not already present and pre-select it
+					m.addTechDomain(m.cardData[m.currentCard].TechDomain)
+					m.preselectTechDomain(m.cardData[m.currentCard].TechDomain)
+					
+					// Pre-fill summary text area
+					m.summaryInput.SetValue(m.cardData[m.currentCard].Summary)
 				}
 				return m, nil
 			case "left", "h":
@@ -468,6 +474,71 @@ func (m model) openBrowser() tea.Cmd {
 		}
 		return nil
 	}
+}
+
+func (m *model) preselectQEInvolvement(qeInvolvement string) {
+	// Find the index of the QE involvement option
+	targetIndex := -1
+	for i, option := range qeOptions {
+		if option == qeInvolvement {
+			targetIndex = i
+			break
+		}
+	}
+	
+	if targetIndex >= 0 {
+		// Reset cursor to top first
+		for i := 0; i < len(qeOptions); i++ {
+			m.qeList.CursorUp()
+		}
+		// Move to target position
+		for i := 0; i < targetIndex; i++ {
+			m.qeList.CursorDown()
+		}
+	}
+}
+
+func (m *model) preselectTechDomain(techDomain string) {
+	if techDomain == "" {
+		return
+	}
+	
+	// Find the index of the tech domain option
+	targetIndex := -1
+	for i, domain := range m.techDomains {
+		if domain == techDomain {
+			targetIndex = i
+			break
+		}
+	}
+	
+	if targetIndex >= 0 {
+		// Reset cursor to top first
+		for i := 0; i < len(m.techDomains)+1; i++ { // +1 for "Other" option
+			m.techList.CursorUp()
+		}
+		// Move to target position
+		for i := 0; i < targetIndex; i++ {
+			m.techList.CursorDown()
+		}
+	}
+}
+
+func (m *model) addTechDomain(techDomain string) {
+	if techDomain == "" {
+		return
+	}
+	
+	// Check if domain already exists
+	for _, existing := range m.techDomains {
+		if existing == techDomain {
+			return // Already exists
+		}
+	}
+	
+	// Add to available domains
+	m.techDomains = append(m.techDomains, techDomain)
+	m.updateTechList()
 }
 
 func generateMarkdownSummary(cardData []CardData) string {
