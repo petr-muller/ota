@@ -582,7 +582,21 @@ var (
 
 	progressStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("240"))
+
+	labelStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("39"))
 )
+
+func formatKeyValue(key, value string, width int) string {
+	styledKey := labelStyle.Render(key + ":")
+	// Calculate padding needed to align values
+	padding := width - len(key) - 1 // -1 for the colon
+	if padding < 1 {
+		padding = 1
+	}
+	return styledKey + strings.Repeat(" ", padding) + value
+}
 
 func (m model) View() string {
 	if m.err != nil {
@@ -637,14 +651,22 @@ func (m model) View() string {
 		}
 	}
 
-	cardInfo := cardStyle.Render(fmt.Sprintf(
-		"Key: %s%s\nTitle: %s\nAssignee: %s\nStatus: %s",
-		currentCard.Key,
-		prefillIndicator,
-		currentCard.Fields.Summary,
-		assignee,
-		status,
-	))
+	// Format card info with aligned values
+	cardLabels := []string{"Key", "Title", "Assignee", "Status"}
+	labelWidth := 0
+	for _, label := range cardLabels {
+		if len(label) > labelWidth {
+			labelWidth = len(label)
+		}
+	}
+	
+	cardInfoText := fmt.Sprintf("%s\n%s\n%s\n%s",
+		formatKeyValue("Key", currentCard.Key+prefillIndicator, labelWidth),
+		formatKeyValue("Title", currentCard.Fields.Summary, labelWidth),
+		formatKeyValue("Assignee", assignee, labelWidth),
+		formatKeyValue("Status", status, labelWidth),
+	)
+	cardInfo := cardStyle.Render(cardInfoText)
 
 	var content string
 	var instructions string
@@ -657,10 +679,18 @@ func (m model) View() string {
 				content = "This card was previously skipped."
 				instructions = "←/→ (h/l) to navigate cards, 'e' to edit, 'o' to open in browser, q to quit"
 			} else {
-				content = fmt.Sprintf("Previously completed:\nQE Involvement: %s\nTech Domain: %s\nSummary: %s", 
-					m.cardData[m.currentCard].QEInvolvement,
-					m.cardData[m.currentCard].TechDomain,
-					m.cardData[m.currentCard].Summary)
+				prefilledLabels := []string{"QE Involvement", "Tech Domain", "Summary"}
+				prefilledLabelWidth := 0
+				for _, label := range prefilledLabels {
+					if len(label) > prefilledLabelWidth {
+						prefilledLabelWidth = len(label)
+					}
+				}
+				
+				content = fmt.Sprintf("Previously completed:\n%s\n%s\n%s",
+					formatKeyValue("QE Involvement", m.cardData[m.currentCard].QEInvolvement, prefilledLabelWidth),
+					formatKeyValue("Tech Domain", m.cardData[m.currentCard].TechDomain, prefilledLabelWidth),
+					formatKeyValue("Summary", m.cardData[m.currentCard].Summary, prefilledLabelWidth))
 				instructions = "←/→ (h/l) to navigate cards, 'e' to edit, 'o' to open in browser, q to quit"
 			}
 		} else {
