@@ -866,8 +866,11 @@ func (m model) View() string {
 	// Current card info
 	currentCard := m.cards[m.currentCard]
 
-	// Calculate progress
+	// Calculate progress - set to 100% when on the last card
 	progressPercent := float64(m.currentCard) / float64(len(m.cards))
+	if m.currentCard == len(m.cards)-1 {
+		progressPercent = 1.0 // 100% when on the last card
+	}
 	progressText := fmt.Sprintf("Card %d of %d", m.currentCard+1, len(m.cards))
 	progressBar := m.progress.ViewAs(progressPercent)
 
