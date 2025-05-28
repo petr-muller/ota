@@ -109,6 +109,10 @@ type model struct {
 	customTechInput bool
 	browserOpened   bool
 
+	// Terminal dimensions
+	terminalWidth  int
+	terminalHeight int
+
 	err error
 }
 
@@ -165,18 +169,20 @@ func initialModel(jira jiraClient, filterName, outputFile, markdownFile string) 
 	summaryInput.SetHeight(5)
 
 	return model{
-		jira:         jira,
-		filterName:   filterName,
-		outputFile:   outputFile,
-		markdownFile: markdownFile,
-		currentStep:  stepLoading,
-		spinner:      s,
-		progress:     prog,
-		qeList:       qeList,
-		techList:     techList,
-		techInput:    techInput,
-		summaryInput: summaryInput,
-		techDomains:  techDomains,
+		jira:           jira,
+		filterName:     filterName,
+		outputFile:     outputFile,
+		markdownFile:   markdownFile,
+		currentStep:    stepLoading,
+		spinner:        s,
+		progress:       prog,
+		qeList:         qeList,
+		techList:       techList,
+		techInput:      techInput,
+		summaryInput:   summaryInput,
+		techDomains:    techDomains,
+		terminalWidth:  120, // Default width, will be updated by window size messages
+		terminalHeight: 30,  // Default height
 	}
 }
 
@@ -268,6 +274,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.WindowSizeMsg:
+		m.terminalWidth = msg.Width
+		m.terminalHeight = msg.Height
+		return m, nil
+
 	case errorMsg:
 		m.err = msg.err
 		return m, tea.Quit
@@ -295,14 +306,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.cardData[m.currentCard].prefilled {
 					m.cardData[m.currentCard].prefilled = false
 					m.cardData[m.currentCard].Skipped = false
-					
+
 					// Pre-select QE involvement in the list
 					m.preselectQEInvolvement(m.cardData[m.currentCard].QEInvolvement)
-					
+
 					// Add tech domain to available domains if not already present and pre-select it
 					m.addTechDomain(m.cardData[m.currentCard].TechDomain)
 					m.preselectTechDomain(m.cardData[m.currentCard].TechDomain)
-					
+
 					// Pre-fill summary text area
 					m.summaryInput.SetValue(m.cardData[m.currentCard].Summary)
 				}
@@ -336,11 +347,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.savePartialResults()
 				}
 			case "enter":
-				if selected := m.qeList.SelectedItem(); selected != nil {
-					m.cardData[m.currentCard].QEInvolvement = selected.(listItem).title
-					m.currentStep = stepTechDomain
-					return m, nil
+				// Only allow enter to edit if card is not prefilled
+				if !m.cardData[m.currentCard].prefilled {
+					if selected := m.qeList.SelectedItem(); selected != nil {
+						m.cardData[m.currentCard].QEInvolvement = selected.(listItem).title
+						m.currentStep = stepTechDomain
+						return m, nil
+					}
 				}
+			case "esc":
+				// Cancel edit mode and restore prefilled state
+				if !m.cardData[m.currentCard].prefilled {
+					// Find this card in existing data and restore it
+					existingCards := loadExistingYAML(m.outputFile)
+					if existingCard, exists := existingCards[m.cardData[m.currentCard].Key]; exists {
+						m.cardData[m.currentCard] = existingCard
+						m.cardData[m.currentCard].prefilled = true
+					} else {
+						// If no existing data, just mark as prefilled and clear data
+						m.cardData[m.currentCard].QEInvolvement = ""
+						m.cardData[m.currentCard].TechDomain = ""
+						m.cardData[m.currentCard].Summary = ""
+						m.cardData[m.currentCard].Skipped = false
+						m.cardData[m.currentCard].prefilled = true
+					}
+				}
+				return m, nil
 			}
 
 		case stepTechDomain:
@@ -397,19 +429,42 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, nil
 				case "enter":
-					if selected := m.techList.SelectedItem(); selected != nil {
-						selectedTitle := selected.(listItem).title
-						if selectedTitle == "Other (write-in)" {
-							m.customTechInput = true
-							m.techInput.Focus()
-							return m, nil
-						} else {
-							m.cardData[m.currentCard].TechDomain = selectedTitle
-							m.currentStep = stepSummary
-							m.summaryInput.Focus()
-							return m, nil
+					// Only allow enter to edit if card is not prefilled
+					if !m.cardData[m.currentCard].prefilled {
+						if selected := m.techList.SelectedItem(); selected != nil {
+							selectedTitle := selected.(listItem).title
+							if selectedTitle == "Other (write-in)" {
+								m.customTechInput = true
+								m.techInput.Focus()
+								return m, nil
+							} else {
+								m.cardData[m.currentCard].TechDomain = selectedTitle
+								m.currentStep = stepSummary
+								m.summaryInput.Focus()
+								return m, nil
+							}
 						}
 					}
+				case "esc":
+					// Cancel edit mode and restore prefilled state
+					if !m.cardData[m.currentCard].prefilled {
+						// Find this card in existing data and restore it
+						existingCards := loadExistingYAML(m.outputFile)
+						if existingCard, exists := existingCards[m.cardData[m.currentCard].Key]; exists {
+							m.cardData[m.currentCard] = existingCard
+							m.cardData[m.currentCard].prefilled = true
+						} else {
+							// If no existing data, just mark as prefilled and clear data
+							m.cardData[m.currentCard].QEInvolvement = ""
+							m.cardData[m.currentCard].TechDomain = ""
+							m.cardData[m.currentCard].Summary = ""
+							m.cardData[m.currentCard].Skipped = false
+							m.cardData[m.currentCard].prefilled = true
+						}
+						// Go back to QE involvement step
+						m.currentStep = stepQEInvolvement
+					}
+					return m, nil
 				}
 			}
 
@@ -417,6 +472,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
+			case "esc":
+				// Cancel edit mode and restore prefilled state
+				if !m.cardData[m.currentCard].prefilled {
+					// Find this card in existing data and restore it
+					existingCards := loadExistingYAML(m.outputFile)
+					if existingCard, exists := existingCards[m.cardData[m.currentCard].Key]; exists {
+						m.cardData[m.currentCard] = existingCard
+						m.cardData[m.currentCard].prefilled = true
+					} else {
+						// If no existing data, just mark as prefilled and clear data
+						m.cardData[m.currentCard].QEInvolvement = ""
+						m.cardData[m.currentCard].TechDomain = ""
+						m.cardData[m.currentCard].Summary = ""
+						m.cardData[m.currentCard].Skipped = false
+						m.cardData[m.currentCard].prefilled = true
+					}
+					// Clear and blur the summary input
+					m.summaryInput.SetValue("")
+					m.summaryInput.Blur()
+					// Go back to QE involvement step
+					m.currentStep = stepQEInvolvement
+				}
+				return m, nil
 			case "ctrl+s":
 				summary := strings.TrimSpace(m.summaryInput.Value())
 				if summary != "" {
@@ -492,7 +570,7 @@ func (m *model) preselectQEInvolvement(qeInvolvement string) {
 			break
 		}
 	}
-	
+
 	if targetIndex >= 0 {
 		// Reset cursor to top first
 		for i := 0; i < len(qeOptions); i++ {
@@ -509,7 +587,7 @@ func (m *model) preselectTechDomain(techDomain string) {
 	if techDomain == "" {
 		return
 	}
-	
+
 	// Find the index of the tech domain option
 	targetIndex := -1
 	for i, domain := range m.techDomains {
@@ -518,7 +596,7 @@ func (m *model) preselectTechDomain(techDomain string) {
 			break
 		}
 	}
-	
+
 	if targetIndex >= 0 {
 		// Reset cursor to top first
 		for i := 0; i < len(m.techDomains)+1; i++ { // +1 for "Other" option
@@ -535,14 +613,14 @@ func (m *model) addTechDomain(techDomain string) {
 	if techDomain == "" {
 		return
 	}
-	
+
 	// Check if domain already exists
 	for _, existing := range m.techDomains {
 		if existing == techDomain {
 			return // Already exists
 		}
 	}
-	
+
 	// Add to available domains
 	m.techDomains = append(m.techDomains, techDomain)
 	m.updateTechList()
@@ -649,21 +727,21 @@ func (m model) saveResults() tea.Cmd {
 
 var (
 	titleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("205")).
-		MarginBottom(1)
+			Bold(true).
+			Foreground(lipgloss.Color("205")).
+			MarginBottom(1)
 
 	cardStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Padding(1).
-		MarginBottom(1)
+			Border(lipgloss.RoundedBorder()).
+			Padding(1).
+			MarginBottom(1)
 
 	progressStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240"))
+			Foreground(lipgloss.Color("240"))
 
 	labelStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("39"))
+			Bold(true).
+			Foreground(lipgloss.Color("39"))
 )
 
 func formatKeyValue(key, value string, width int) string {
@@ -681,6 +759,73 @@ func formatKeyValue(key, value string, width int) string {
 	styledLabel := labelStyle.Render(labelWithPadding)
 
 	return styledLabel + value
+}
+
+func formatKeyValueWithWrap(key, value string, labelWidth, terminalWidth int) string {
+	// Create the key with colon and calculate needed padding
+	keyWithColon := key + ":"
+	padding := labelWidth - len(keyWithColon)
+	if padding < 1 {
+		padding = 1
+	}
+
+	// Create the full label with padding first
+	labelWithPadding := keyWithColon + strings.Repeat(" ", padding)
+
+	// Apply style to the entire padded label
+	styledLabel := labelStyle.Render(labelWithPadding)
+
+	// Calculate available width for text (account for ANSI escape codes in styled label)
+	// The styled label visual width is just the labelWidth
+	availableWidth := terminalWidth - labelWidth
+	if availableWidth < 20 {
+		availableWidth = 20 // Minimum reasonable width
+	}
+
+	// Wrap the value text
+	wrappedValue := wrapText(value, availableWidth)
+
+	// For multiline values, indent continuation lines
+	lines := strings.Split(wrappedValue, "\n")
+	if len(lines) > 1 {
+		indent := strings.Repeat(" ", labelWidth)
+		for i := 1; i < len(lines); i++ {
+			lines[i] = indent + lines[i]
+		}
+		wrappedValue = strings.Join(lines, "\n")
+	}
+
+	return styledLabel + lines[0] + (func() string {
+		if len(lines) > 1 {
+			return "\n" + strings.Join(lines[1:], "\n")
+		}
+		return ""
+	})()
+}
+
+func wrapText(text string, width int) string {
+	if len(text) <= width {
+		return text
+	}
+
+	var result []string
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return text
+	}
+
+	currentLine := words[0]
+	for _, word := range words[1:] {
+		if len(currentLine)+1+len(word) <= width {
+			currentLine += " " + word
+		} else {
+			result = append(result, currentLine)
+			currentLine = word
+		}
+	}
+	result = append(result, currentLine)
+
+	return strings.Join(result, "\n")
 }
 
 func (m model) View() string {
@@ -714,12 +859,12 @@ func (m model) View() string {
 
 	// Current card info
 	currentCard := m.cards[m.currentCard]
-	
+
 	// Calculate progress
 	progressPercent := float64(m.currentCard) / float64(len(m.cards))
 	progressText := fmt.Sprintf("Card %d of %d", m.currentCard+1, len(m.cards))
 	progressBar := m.progress.ViewAs(progressPercent)
-	
+
 	// Combine progress text and bar
 	progressDisplay := fmt.Sprintf("%s\n%s", progressText, progressBar)
 
@@ -790,7 +935,7 @@ func (m model) View() string {
 				content = fmt.Sprintf("Previously completed:\n%s\n%s\n%s",
 					formatKeyValue("QE Involvement", m.cardData[m.currentCard].QEInvolvement, prefilledLabelWidth),
 					formatKeyValue("Tech Domain", m.cardData[m.currentCard].TechDomain, prefilledLabelWidth),
-					formatKeyValue("Summary", m.cardData[m.currentCard].Summary, prefilledLabelWidth))
+					formatKeyValueWithWrap("Summary", m.cardData[m.currentCard].Summary, prefilledLabelWidth, m.terminalWidth))
 				instructions = "←/→ (h/l) to navigate cards, 'e' to edit, 'o' to open in browser, q to quit"
 			}
 		} else {
@@ -804,12 +949,12 @@ func (m model) View() string {
 			instructions = "Type domain name, Enter to confirm, Esc to cancel"
 		} else {
 			content = m.techList.View()
-			instructions = "Use ↑/↓ to navigate options, ←/→ (h/l) to navigate cards, Enter to select, 'o' to open in browser, q to quit"
+			instructions = "Use ↑/↓ to navigate options, ←/→ (h/l) to navigate cards, Enter to select, 'o' to open in browser, Esc to cancel edit, q to quit"
 		}
 
 	case stepSummary:
 		content = fmt.Sprintf("Enter summary (about 3 sentences):\n\n%s", m.summaryInput.View())
-		instructions = "Ctrl+S to save and continue, Ctrl+C to quit"
+		instructions = "Ctrl+S to save and continue, Esc to cancel edit, Ctrl+C to quit"
 	}
 
 	statusMsg := ""
