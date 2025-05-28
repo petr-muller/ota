@@ -36,10 +36,11 @@ func (o *options) validate() error {
 type CardData struct {
 	Key           string `yaml:"key"`
 	URL           string `yaml:"url"`
-	Title         string `yaml:"title"`
-	QEInvolvement string `yaml:"qe_involvement"`
-	TechDomain    string `yaml:"technical_domain"`
-	Summary       string `yaml:"summary"`
+	Title         string `yaml:"title,omitempty"`
+	QEInvolvement string `yaml:"qe_involvement,omitempty"`
+	TechDomain    string `yaml:"technical_domain,omitempty"`
+	Summary       string `yaml:"summary,omitempty"`
+	Skipped       bool   `yaml:"skipped,omitempty"`
 }
 
 type SprintSummary struct {
@@ -240,13 +241,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "o":
 				return m, m.openBrowser()
 			case "s":
-				// Skip this card - move to next card without collecting data
+				// Skip this card - mark as skipped and move to next card
+				m.cardData[m.currentCard].Skipped = true
 				m.currentCard++
 				if m.currentCard >= len(m.cards) {
 					m.currentStep = stepComplete
 					return m, m.saveResults()
+				} else {
+					return m, m.savePartialResults()
 				}
-				return m, nil
 			case "enter":
 				if selected := m.qeList.SelectedItem(); selected != nil {
 					m.cardData[m.currentCard].QEInvolvement = selected.(listItem).title
@@ -381,15 +384,15 @@ func (m model) openBrowser() tea.Cmd {
 
 func (m model) savePartialResults() tea.Cmd {
 	return func() tea.Msg {
-		// Filter out skipped cards (those without QE involvement data)
-		var completedCards []CardData
+		// Include all processed cards (completed and skipped)
+		var processedCards []CardData
 		for _, card := range m.cardData {
-			if card.QEInvolvement != "" {
-				completedCards = append(completedCards, card)
+			if card.QEInvolvement != "" || card.Skipped {
+				processedCards = append(processedCards, card)
 			}
 		}
 		
-		summary := SprintSummary{Cards: completedCards}
+		summary := SprintSummary{Cards: processedCards}
 
 		data, err := yaml.Marshal(summary)
 		if err != nil {
@@ -437,13 +440,15 @@ func (m model) View() string {
 			return "No cards found in current sprint."
 		}
 		completedCount := 0
+		skippedCount := 0
 		for _, card := range m.cardData {
-			if card.QEInvolvement != "" {
+			if card.Skipped {
+				skippedCount++
+			} else if card.QEInvolvement != "" {
 				completedCount++
 			}
 		}
-		skippedCount := len(m.cards) - completedCount
-		return fmt.Sprintf("Summary saved to %s!\n\nProcessed %d cards, skipped %d cards.", m.outputFile, completedCount, skippedCount)
+		return fmt.Sprintf("Summary saved to %s!\n\nCompleted %d cards, skipped %d cards.", m.outputFile, completedCount, skippedCount)
 	}
 
 	if len(m.cards) == 0 {
