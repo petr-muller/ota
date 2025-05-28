@@ -134,7 +134,7 @@ func initialModel(jira jiraClient, filterName, outputFile, markdownFile string) 
 
 	// Initialize progress bar
 	prog := progress.New(progress.WithDefaultGradient())
-	prog.Width = 40
+	prog.Width = 80 // 2/3 of default 120 width, will be updated by window size
 
 	// Initialize QE involvement list
 	qeItems := make([]list.Item, len(qeOptions))
@@ -277,6 +277,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.terminalWidth = msg.Width
 		m.terminalHeight = msg.Height
+		// Update progress bar width to 2/3 of terminal width
+		progressWidth := (msg.Width * 2) / 3
+		if progressWidth < 20 {
+			progressWidth = 20 // Minimum width
+		}
+		m.progress.Width = progressWidth
 		return m, nil
 
 	case errorMsg:
@@ -865,8 +871,14 @@ func (m model) View() string {
 	progressText := fmt.Sprintf("Card %d of %d", m.currentCard+1, len(m.cards))
 	progressBar := m.progress.ViewAs(progressPercent)
 
-	// Combine progress text and bar
+	// Combine progress text and bar, then center them
 	progressDisplay := fmt.Sprintf("%s\n%s", progressText, progressBar)
+
+	// Create a centered progress display using lipgloss
+	centeredProgressStyle := lipgloss.NewStyle().
+		Width(m.terminalWidth).
+		Align(lipgloss.Center)
+	progressDisplay = centeredProgressStyle.Render(progressDisplay)
 
 	assignee := "Unassigned"
 	if currentCard.Fields.Assignee != nil {
@@ -910,7 +922,24 @@ func (m model) View() string {
 		formatKeyValue("Status", status, labelWidth),
 		formatKeyValue("Type", cardType, labelWidth),
 	)
-	cardInfo := cardStyle.Render(cardInfoText)
+	// Create a fixed-width card style based on terminal size
+	cardWidth := (m.terminalWidth * 3) / 4 // Use 3/4 of terminal width
+	if cardWidth < 60 {
+		cardWidth = 60 // Minimum width
+	}
+	if cardWidth > 120 {
+		cardWidth = 120 // Maximum width for readability
+	}
+
+	// Create card with fixed width and center it
+	dynamicCardStyle := cardStyle.Copy().Width(cardWidth)
+	cardInfo := dynamicCardStyle.Render(cardInfoText)
+
+	// Center the entire card frame
+	cardCenterStyle := lipgloss.NewStyle().
+		Width(m.terminalWidth).
+		Align(lipgloss.Center)
+	cardInfo = cardCenterStyle.Render(cardInfo)
 
 	var content string
 	var instructions string
@@ -962,14 +991,25 @@ func (m model) View() string {
 		statusMsg = progressStyle.Render("🌐 Opened in browser") + "\n\n"
 	}
 
+	// Center the title and instructions using lipgloss
+	centeredTitleStyle := lipgloss.NewStyle().
+		Width(m.terminalWidth).
+		Align(lipgloss.Center)
+	centeredTitle := centeredTitleStyle.Render(titleStyle.Render("Sprint Summary Tool"))
+
+	centeredInstructionsStyle := lipgloss.NewStyle().
+		Width(m.terminalWidth).
+		Align(lipgloss.Center)
+	centeredInstructions := centeredInstructionsStyle.Render(progressStyle.Render(instructions))
+
 	return fmt.Sprintf(
 		"%s\n\n%s\n\n%s\n\n%s%s\n\n%s",
-		titleStyle.Render("Sprint Summary Tool"),
+		centeredTitle,
 		progressStyle.Render(progressDisplay),
 		cardInfo,
 		statusMsg,
 		content,
-		progressStyle.Render(instructions),
+		centeredInstructions,
 	)
 }
 
