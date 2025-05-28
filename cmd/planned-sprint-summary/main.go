@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,9 +25,10 @@ import (
 )
 
 type options struct {
-	jira   flagutil.JiraOptions
-	filter string
-	output string
+	jira     flagutil.JiraOptions
+	filter   string
+	output   string
+	markdown string
 }
 
 func (o *options) validate() error {
@@ -83,9 +85,10 @@ var (
 )
 
 type model struct {
-	jira       jiraClient
-	filterName string
-	outputFile string
+	jira         jiraClient
+	filterName   string
+	outputFile   string
+	markdownFile string
 
 	cards       []jira.Issue
 	currentCard int
@@ -119,7 +122,7 @@ type browserOpenedMsg struct{}
 
 type clearBrowserOpenedMsg struct{}
 
-func initialModel(jira jiraClient, filterName, outputFile string) model {
+func initialModel(jira jiraClient, filterName, outputFile, markdownFile string) model {
 	s := spinner.New()
 	s.Spinner = spinner.Points
 
@@ -159,6 +162,7 @@ func initialModel(jira jiraClient, filterName, outputFile string) model {
 		jira:         jira,
 		filterName:   filterName,
 		outputFile:   outputFile,
+		markdownFile: markdownFile,
 		currentStep:  stepLoading,
 		spinner:      s,
 		qeList:       qeList,
@@ -480,6 +484,68 @@ func (m model) openBrowser() tea.Cmd {
 	}
 }
 
+func generateMarkdownSummary(cardData []CardData) string {
+	// Group cards by QE involvement, then by technical domain
+	qeGroups := make(map[string]map[string][]CardData)
+	
+	for _, card := range cardData {
+		// Only include cards that have been processed (not skipped or have QE involvement)
+		if card.QEInvolvement == "" && !card.Skipped {
+			continue
+		}
+		
+		if card.Skipped {
+			continue // Skip cards entirely
+		}
+		
+		if qeGroups[card.QEInvolvement] == nil {
+			qeGroups[card.QEInvolvement] = make(map[string][]CardData)
+		}
+		
+		qeGroups[card.QEInvolvement][card.TechDomain] = append(qeGroups[card.QEInvolvement][card.TechDomain], card)
+	}
+	
+	var markdown strings.Builder
+	markdown.WriteString("# Sprint Summary\n\n")
+	
+	// Order QE involvement sections
+	qeOrder := []string{"Needs QE involvement", "Needs QE awareness", "OSUS Operations", "QE involvement not needed"}
+	
+	for _, qeInvolvement := range qeOrder {
+		techDomains, exists := qeGroups[qeInvolvement]
+		if !exists || len(techDomains) == 0 {
+			continue
+		}
+		
+		markdown.WriteString(fmt.Sprintf("# %s\n\n", qeInvolvement))
+		
+		// Sort technical domains alphabetically
+		var sortedDomains []string
+		for domain := range techDomains {
+			sortedDomains = append(sortedDomains, domain)
+		}
+		sort.Strings(sortedDomains)
+		
+		for _, domain := range sortedDomains {
+			cards := techDomains[domain]
+			if len(cards) == 0 {
+				continue
+			}
+			
+			markdown.WriteString(fmt.Sprintf("## %s\n\n", domain))
+			
+			for _, card := range cards {
+				markdown.WriteString(fmt.Sprintf("[%s](%s)\n\n", card.Key, card.URL))
+				if card.Summary != "" {
+					markdown.WriteString(fmt.Sprintf("%s\n\n", card.Summary))
+				}
+			}
+		}
+	}
+	
+	return markdown.String()
+}
+
 func (m model) savePartialResults() tea.Cmd {
 	return func() tea.Msg {
 		// Include all processed cards (completed and skipped)
@@ -499,6 +565,14 @@ func (m model) savePartialResults() tea.Cmd {
 
 		if err := os.WriteFile(m.outputFile, data, 0644); err != nil {
 			return errorMsg{err: err}
+		}
+
+		// Generate and save markdown summary
+		if m.markdownFile != "" {
+			markdownContent := generateMarkdownSummary(m.cardData)
+			if err := os.WriteFile(m.markdownFile, []byte(markdownContent), 0644); err != nil {
+				return errorMsg{err: err}
+			}
 		}
 
 		return nil
@@ -645,6 +719,7 @@ func gatherOptions() options {
 	o.jira.AddFlags(fs)
 	fs.StringVar(&o.filter, "filter", "Filter for OTA", "Jira filter name")
 	fs.StringVar(&o.output, "output", "sprint-summary.yaml", "Output YAML file")
+	fs.StringVar(&o.markdown, "markdown", "sprint-summary.md", "Output markdown file")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		logrus.WithError(err).Fatalf("cannot parse args")
@@ -664,7 +739,7 @@ func main() {
 		logrus.WithError(err).Fatal("cannot create Jira client")
 	}
 
-	model := initialModel(jiraClient, o.filter, o.output)
+	model := initialModel(jiraClient, o.filter, o.output, o.markdown)
 
 	if _, err := tea.NewProgram(model, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Printf("Error running program: %v\n", err)
