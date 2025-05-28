@@ -41,6 +41,9 @@ type CardData struct {
 	TechDomain    string `yaml:"technical_domain,omitempty"`
 	Summary       string `yaml:"summary,omitempty"`
 	Skipped       bool   `yaml:"skipped,omitempty"`
+	
+	// Non-exported field to track if this card was prefilled from existing YAML
+	prefilled bool
 }
 
 type SprintSummary struct {
@@ -188,6 +191,29 @@ func loadCards(jira jiraClient, filterName string) tea.Cmd {
 	}
 }
 
+func loadExistingYAML(filename string) map[string]CardData {
+	existingCards := make(map[string]CardData)
+	
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		// File doesn't exist or can't be read, return empty map
+		return existingCards
+	}
+	
+	var summary SprintSummary
+	if err := yaml.Unmarshal(data, &summary); err != nil {
+		// Invalid YAML, return empty map
+		return existingCards
+	}
+	
+	for _, card := range summary.Cards {
+		card.prefilled = true
+		existingCards[card.Key] = card
+	}
+	
+	return existingCards
+}
+
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
@@ -201,7 +227,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cards = msg.cards
 		m.cardData = make([]CardData, len(m.cards))
 
-		// Initialize card data with basic info
+		// Load existing YAML data if available
+		existingCards := loadExistingYAML(m.outputFile)
+
+		// Initialize card data with basic info and merge existing data
 		for i, card := range m.cards {
 			cardURL, _ := url.JoinPath(m.jira.JiraURL(), "browse", card.Key)
 			m.cardData[i] = CardData{
@@ -209,11 +238,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				URL:   cardURL,
 				Title: card.Fields.Summary,
 			}
+			
+			// If this card exists in previous YAML, merge the data
+			if existingCard, exists := existingCards[card.Key]; exists {
+				m.cardData[i].QEInvolvement = existingCard.QEInvolvement
+				m.cardData[i].TechDomain = existingCard.TechDomain
+				m.cardData[i].Summary = existingCard.Summary
+				m.cardData[i].Skipped = existingCard.Skipped
+				m.cardData[i].prefilled = true
+			}
 		}
 
 		if len(m.cards) == 0 {
 			m.currentStep = stepComplete
 		} else {
+			m.currentCard = 0
 			m.currentStep = stepQEInvolvement
 		}
 		return m, nil
@@ -240,10 +279,39 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case "o":
 				return m, m.openBrowser()
+			case "e":
+				// Edit this card even if prefilled
+				if m.cardData[m.currentCard].prefilled {
+					m.cardData[m.currentCard].prefilled = false
+					// Clear the prefilled data to allow fresh input
+					m.cardData[m.currentCard].QEInvolvement = ""
+					m.cardData[m.currentCard].TechDomain = ""
+					m.cardData[m.currentCard].Summary = ""
+					m.cardData[m.currentCard].Skipped = false
+				}
+				return m, nil
+			case "left", "h":
+				// Navigate to previous card
+				if m.currentCard > 0 {
+					m.currentCard--
+				}
+				return m, nil
+			case "right", "l":
+				// Navigate to next card
+				if m.currentCard < len(m.cardData)-1 {
+					m.currentCard++
+				}
+				return m, nil
 			case "s":
 				// Skip this card - mark as skipped and move to next card
 				m.cardData[m.currentCard].Skipped = true
 				m.currentCard++
+				
+				// Skip to next non-prefilled card
+				for m.currentCard < len(m.cardData) && m.cardData[m.currentCard].prefilled {
+					m.currentCard++
+				}
+				
 				if m.currentCard >= len(m.cards) {
 					m.currentStep = stepComplete
 					return m, m.saveResults()
@@ -299,6 +367,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.Quit
 				case "o":
 					return m, m.openBrowser()
+				case "left", "h":
+					// Navigate to previous card
+					if m.currentCard > 0 {
+						m.currentCard--
+					}
+					return m, nil
+				case "right", "l":
+					// Navigate to next card
+					if m.currentCard < len(m.cardData)-1 {
+						m.currentCard++
+					}
+					return m, nil
 				case "enter":
 					if selected := m.techList.SelectedItem(); selected != nil {
 						selectedTitle := selected.(listItem).title
@@ -322,6 +402,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case "o":
 				return m, m.openBrowser()
+			case "left", "h":
+				// Navigate to previous card
+				if m.currentCard > 0 {
+					m.currentCard--
+				}
+				return m, nil
+			case "right", "l":
+				// Navigate to next card
+				if m.currentCard < len(m.cardData)-1 {
+					m.currentCard++
+				}
+				return m, nil
 			case "ctrl+s":
 				summary := strings.TrimSpace(m.summaryInput.Value())
 				if summary != "" {
@@ -331,6 +423,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					// Move to next card
 					m.currentCard++
+					
+					// Skip to next non-prefilled card
+					for m.currentCard < len(m.cardData) && m.cardData[m.currentCard].prefilled {
+						m.currentCard++
+					}
+					
 					if m.currentCard >= len(m.cards) {
 						m.currentStep = stepComplete
 						return m, m.saveResults()
@@ -469,9 +567,20 @@ func (m model) View() string {
 		status = currentCard.Fields.Status.Name
 	}
 
+	// Add prefilled indicator
+	prefillIndicator := ""
+	if m.cardData[m.currentCard].prefilled {
+		if m.cardData[m.currentCard].Skipped {
+			prefillIndicator = " ⏭️  (Previously skipped)"
+		} else {
+			prefillIndicator = " ✅ (Previously completed)"
+		}
+	}
+
 	cardInfo := cardStyle.Render(fmt.Sprintf(
-		"Key: %s\nTitle: %s\nAssignee: %s\nStatus: %s",
+		"Key: %s%s\nTitle: %s\nAssignee: %s\nStatus: %s",
 		currentCard.Key,
+		prefillIndicator,
 		currentCard.Fields.Summary,
 		assignee,
 		status,
@@ -482,8 +591,22 @@ func (m model) View() string {
 
 	switch m.currentStep {
 	case stepQEInvolvement:
-		content = m.qeList.View()
-		instructions = "Use ↑/↓ to navigate, Enter to select, 'o' to open in browser, 's' to skip card, q to quit"
+		if m.cardData[m.currentCard].prefilled {
+			// Show prefilled data
+			if m.cardData[m.currentCard].Skipped {
+				content = "This card was previously skipped."
+				instructions = "←/→ (h/l) to navigate cards, 'e' to edit, 'o' to open in browser, q to quit"
+			} else {
+				content = fmt.Sprintf("Previously completed:\nQE Involvement: %s\nTech Domain: %s\nSummary: %s", 
+					m.cardData[m.currentCard].QEInvolvement,
+					m.cardData[m.currentCard].TechDomain,
+					m.cardData[m.currentCard].Summary)
+				instructions = "←/→ (h/l) to navigate cards, 'e' to edit, 'o' to open in browser, q to quit"
+			}
+		} else {
+			content = m.qeList.View()
+			instructions = "Use ↑/↓ to navigate options, ←/→ (h/l) to navigate cards, Enter to select, 'o' to open in browser, 'e' to edit prefilled, 's' to skip card, q to quit"
+		}
 
 	case stepTechDomain:
 		if m.customTechInput {
@@ -491,12 +614,12 @@ func (m model) View() string {
 			instructions = "Type domain name, Enter to confirm, Esc to cancel"
 		} else {
 			content = m.techList.View()
-			instructions = "Use ↑/↓ to navigate, Enter to select, 'o' to open in browser, q to quit"
+			instructions = "Use ↑/↓ to navigate options, ←/→ (h/l) to navigate cards, Enter to select, 'o' to open in browser, q to quit"
 		}
 
 	case stepSummary:
 		content = fmt.Sprintf("Enter summary (about 3 sentences):\n\n%s", m.summaryInput.View())
-		instructions = "Ctrl+S to save and continue, 'o' to open in browser, Ctrl+C to quit"
+		instructions = "Ctrl+S to save and continue, ←/→ (h/l) to navigate cards, 'o' to open in browser, Ctrl+C to quit"
 	}
 
 	statusMsg := ""
