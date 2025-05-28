@@ -404,20 +404,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "ctrl+c":
 				return m, tea.Quit
-			case "o":
-				return m, m.openBrowser()
-			case "left", "h":
-				// Navigate to previous card
-				if m.currentCard > 0 {
-					m.currentCard--
-				}
-				return m, nil
-			case "right", "l":
-				// Navigate to next card
-				if m.currentCard < len(m.cardData)-1 {
-					m.currentCard++
-				}
-				return m, nil
 			case "ctrl+s":
 				summary := strings.TrimSpace(m.summaryInput.Value())
 				if summary != "" {
@@ -693,7 +679,7 @@ func (m model) View() string {
 
 	case stepSummary:
 		content = fmt.Sprintf("Enter summary (about 3 sentences):\n\n%s", m.summaryInput.View())
-		instructions = "Ctrl+S to save and continue, ←/→ (h/l) to navigate cards, 'o' to open in browser, Ctrl+C to quit"
+		instructions = "Ctrl+S to save and continue, Ctrl+C to quit"
 	}
 
 	statusMsg := ""
