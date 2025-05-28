@@ -743,8 +743,8 @@ func gatherOptions() options {
 
 	o.jira.AddFlags(fs)
 	fs.StringVar(&o.filter, "filter", "Filter for OTA", "Jira filter name")
-	fs.StringVar(&o.output, "output", "sprint-summary.yaml", "Output YAML file")
-	fs.StringVar(&o.markdown, "markdown", "sprint-summary.md", "Output markdown file")
+	fs.StringVar(&o.output, "output", "/tmp/sprint-summary.yaml", "Output YAML file")
+	fs.StringVar(&o.markdown, "markdown", "/tmp/sprint-summary.md", "Output markdown file")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		logrus.WithError(err).Fatalf("cannot parse args")
