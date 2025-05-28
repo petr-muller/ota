@@ -310,7 +310,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, m.saveResults()
 					} else {
 						m.currentStep = stepQEInvolvement
-						return m, nil
+						return m, m.savePartialResults()
 					}
 				}
 			}
@@ -346,7 +346,7 @@ func (m *model) updateTechList() {
 	m.techList.SetItems(techItems)
 }
 
-func (m model) saveResults() tea.Cmd {
+func (m model) savePartialResults() tea.Cmd {
 	return func() tea.Msg {
 		// Filter out skipped cards (those without QE involvement data)
 		var completedCards []CardData
@@ -369,6 +369,10 @@ func (m model) saveResults() tea.Cmd {
 
 		return nil
 	}
+}
+
+func (m model) saveResults() tea.Cmd {
+	return m.savePartialResults()
 }
 
 var (
