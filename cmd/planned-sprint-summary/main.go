@@ -13,6 +13,7 @@ import (
 
 	"github.com/andygrunwald/go-jira"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -96,6 +97,7 @@ type model struct {
 
 	// UI components
 	spinner      spinner.Model
+	progress     progress.Model
 	qeList       list.Model
 	techList     list.Model
 	techInput    textinput.Model
@@ -125,6 +127,10 @@ type clearBrowserOpenedMsg struct{}
 func initialModel(jira jiraClient, filterName, outputFile, markdownFile string) model {
 	s := spinner.New()
 	s.Spinner = spinner.Points
+
+	// Initialize progress bar
+	prog := progress.New(progress.WithDefaultGradient())
+	prog.Width = 40
 
 	// Initialize QE involvement list
 	qeItems := make([]list.Item, len(qeOptions))
@@ -165,6 +171,7 @@ func initialModel(jira jiraClient, filterName, outputFile, markdownFile string) 
 		markdownFile: markdownFile,
 		currentStep:  stepLoading,
 		spinner:      s,
+		progress:     prog,
 		qeList:       qeList,
 		techList:     techList,
 		techInput:    techInput,
@@ -707,7 +714,14 @@ func (m model) View() string {
 
 	// Current card info
 	currentCard := m.cards[m.currentCard]
-	progress := fmt.Sprintf("Card %d of %d", m.currentCard+1, len(m.cards))
+	
+	// Calculate progress
+	progressPercent := float64(m.currentCard) / float64(len(m.cards))
+	progressText := fmt.Sprintf("Card %d of %d", m.currentCard+1, len(m.cards))
+	progressBar := m.progress.ViewAs(progressPercent)
+	
+	// Combine progress text and bar
+	progressDisplay := fmt.Sprintf("%s\n%s", progressText, progressBar)
 
 	assignee := "Unassigned"
 	if currentCard.Fields.Assignee != nil {
@@ -800,7 +814,7 @@ func (m model) View() string {
 	return fmt.Sprintf(
 		"%s\n\n%s\n\n%s\n\n%s%s\n\n%s",
 		titleStyle.Render("Sprint Summary Tool"),
-		progressStyle.Render(progress),
+		progressStyle.Render(progressDisplay),
 		cardInfo,
 		statusMsg,
 		content,
