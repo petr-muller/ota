@@ -19,3 +19,23 @@
 
 # Go workspace file
 go.work
+
+# Built binaries from cmd/
+/planned-sprint-summary
+/monitor
+/monitor-jira-dashboard
+/monitor-jira-clear-labels
+/monitor-jira-create-impact-statement-request
+/monitor-jira-move-to-proposed
+/monitor-jira-move-to-updaterecommendationblocked
+/graph-extend-or-fix
+/graph-spread-edge-changes
+
+# Testing artifacts - specific output files
+sprint-summary.yaml
+sprint-summary.md
+
+# IDE and editor directories
+.claude/
+.vscode/
+.idea/
