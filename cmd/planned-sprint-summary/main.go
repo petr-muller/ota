@@ -43,7 +43,7 @@ type CardData struct {
 	TechDomain    string `yaml:"technical_domain,omitempty"`
 	Summary       string `yaml:"summary,omitempty"`
 	Skipped       bool   `yaml:"skipped,omitempty"`
-	
+
 	// Non-exported field to track if this card was prefilled from existing YAML
 	prefilled bool
 }
@@ -197,24 +197,24 @@ func loadCards(jira jiraClient, filterName string) tea.Cmd {
 
 func loadExistingYAML(filename string) map[string]CardData {
 	existingCards := make(map[string]CardData)
-	
+
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		// File doesn't exist or can't be read, return empty map
 		return existingCards
 	}
-	
+
 	var summary SprintSummary
 	if err := yaml.Unmarshal(data, &summary); err != nil {
 		// Invalid YAML, return empty map
 		return existingCards
 	}
-	
+
 	for _, card := range summary.Cards {
 		card.prefilled = true
 		existingCards[card.Key] = card
 	}
-	
+
 	return existingCards
 }
 
@@ -242,7 +242,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				URL:   cardURL,
 				Title: card.Fields.Summary,
 			}
-			
+
 			// If this card exists in previous YAML, merge the data
 			if existingCard, exists := existingCards[card.Key]; exists {
 				m.cardData[i].QEInvolvement = existingCard.QEInvolvement
@@ -310,12 +310,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Skip this card - mark as skipped and move to next card
 				m.cardData[m.currentCard].Skipped = true
 				m.currentCard++
-				
+
 				// Skip to next non-prefilled card
 				for m.currentCard < len(m.cardData) && m.cardData[m.currentCard].prefilled {
 					m.currentCard++
 				}
-				
+
 				if m.currentCard >= len(m.cards) {
 					m.currentStep = stepComplete
 					return m, m.saveResults()
@@ -413,12 +413,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					// Move to next card
 					m.currentCard++
-					
+
 					// Skip to next non-prefilled card
 					for m.currentCard < len(m.cardData) && m.cardData[m.currentCard].prefilled {
 						m.currentCard++
 					}
-					
+
 					if m.currentCard >= len(m.cards) {
 						m.currentStep = stepComplete
 						return m, m.saveResults()
@@ -473,53 +473,53 @@ func (m model) openBrowser() tea.Cmd {
 func generateMarkdownSummary(cardData []CardData) string {
 	// Group cards by QE involvement, then by technical domain
 	qeGroups := make(map[string]map[string][]CardData)
-	
+
 	for _, card := range cardData {
 		// Only include cards that have been processed (not skipped or have QE involvement)
 		if card.QEInvolvement == "" && !card.Skipped {
 			continue
 		}
-		
+
 		if card.Skipped {
 			continue // Skip cards entirely
 		}
-		
+
 		if qeGroups[card.QEInvolvement] == nil {
 			qeGroups[card.QEInvolvement] = make(map[string][]CardData)
 		}
-		
+
 		qeGroups[card.QEInvolvement][card.TechDomain] = append(qeGroups[card.QEInvolvement][card.TechDomain], card)
 	}
-	
+
 	var markdown strings.Builder
 	markdown.WriteString("# Sprint Summary\n\n")
-	
+
 	// Order QE involvement sections
 	qeOrder := []string{"Needs QE involvement", "Needs QE awareness", "OSUS Operations", "QE involvement not needed"}
-	
+
 	for _, qeInvolvement := range qeOrder {
 		techDomains, exists := qeGroups[qeInvolvement]
 		if !exists || len(techDomains) == 0 {
 			continue
 		}
-		
+
 		markdown.WriteString(fmt.Sprintf("# %s\n\n", qeInvolvement))
-		
+
 		// Sort technical domains alphabetically
 		var sortedDomains []string
 		for domain := range techDomains {
 			sortedDomains = append(sortedDomains, domain)
 		}
 		sort.Strings(sortedDomains)
-		
+
 		for _, domain := range sortedDomains {
 			cards := techDomains[domain]
 			if len(cards) == 0 {
 				continue
 			}
-			
+
 			markdown.WriteString(fmt.Sprintf("## %s\n\n", domain))
-			
+
 			for _, card := range cards {
 				markdown.WriteString(fmt.Sprintf("[%s](%s)\n\n", card.Key, card.URL))
 				if card.Summary != "" {
@@ -528,7 +528,7 @@ func generateMarkdownSummary(cardData []CardData) string {
 			}
 		}
 	}
-	
+
 	return markdown.String()
 }
 
@@ -541,7 +541,7 @@ func (m model) savePartialResults() tea.Cmd {
 				processedCards = append(processedCards, card)
 			}
 		}
-		
+
 		summary := SprintSummary{Cards: processedCards}
 
 		data, err := yaml.Marshal(summary)
@@ -589,13 +589,20 @@ var (
 )
 
 func formatKeyValue(key, value string, width int) string {
-	styledKey := labelStyle.Render(key + ":")
-	// Calculate padding needed to align values
-	padding := width - len(key) - 1 // -1 for the colon
+	// Create the key with colon and calculate needed padding
+	keyWithColon := key + ":"
+	padding := width - len(keyWithColon)
 	if padding < 1 {
 		padding = 1
 	}
-	return styledKey + strings.Repeat(" ", padding) + value
+
+	// Create the full label with padding first
+	labelWithPadding := keyWithColon + strings.Repeat(" ", padding)
+
+	// Apply style to the entire padded label
+	styledLabel := labelStyle.Render(labelWithPadding)
+
+	return styledLabel + value
 }
 
 func (m model) View() string {
@@ -659,7 +666,8 @@ func (m model) View() string {
 			labelWidth = len(label)
 		}
 	}
-	
+	labelWidth += 2 // Add space for colon and padding
+
 	cardInfoText := fmt.Sprintf("%s\n%s\n%s\n%s",
 		formatKeyValue("Key", currentCard.Key+prefillIndicator, labelWidth),
 		formatKeyValue("Title", currentCard.Fields.Summary, labelWidth),
@@ -686,7 +694,8 @@ func (m model) View() string {
 						prefilledLabelWidth = len(label)
 					}
 				}
-				
+				prefilledLabelWidth += 2 // Add space for colon and padding
+
 				content = fmt.Sprintf("Previously completed:\n%s\n%s\n%s",
 					formatKeyValue("QE Involvement", m.cardData[m.currentCard].QEInvolvement, prefilledLabelWidth),
 					formatKeyValue("Tech Domain", m.cardData[m.currentCard].TechDomain, prefilledLabelWidth),
