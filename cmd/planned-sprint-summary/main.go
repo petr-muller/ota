@@ -118,6 +118,7 @@ type model struct {
 	customTechInput bool
 	browserOpened   bool
 	comparison      *sprintComparison
+	previousCards   map[string]CardData // Map of previous sprint cards by key
 
 	// Terminal dimensions
 	terminalWidth  int
@@ -345,6 +346,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			if previousCards != nil {
+				// Store previous cards data for reference during editing
+				m.previousCards = make(map[string]CardData)
+				for _, card := range previousCards {
+					m.previousCards[card.Key] = card
+				}
+
 				comparison := compareSprintData(previousCards, m.cards)
 				m.comparison = &comparison
 				m.currentStep = stepComparison
@@ -1025,6 +1032,60 @@ func renderComparisonTables(comparison sprintComparison, terminalWidth int) stri
 	return result.String()
 }
 
+func renderPreviousSprintInfo(previousCard CardData, terminalWidth int) string {
+	if previousCard.Key == "" {
+		return "" // No previous sprint data
+	}
+
+	sectionStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(1).
+		MarginBottom(1).
+		Foreground(lipgloss.Color("240"))
+
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("33"))
+
+	var content strings.Builder
+	content.WriteString(titleStyle.Render("Previous Sprint Information:") + "\n\n")
+
+	if previousCard.Skipped {
+		content.WriteString("This card was skipped in the previous sprint.")
+	} else {
+		// Calculate label width for alignment
+		labels := []string{"QE Involvement", "Tech Domain", "Summary"}
+		labelWidth := 0
+		for _, label := range labels {
+			if len(label) > labelWidth {
+				labelWidth = len(label)
+			}
+		}
+		labelWidth += 2 // Add space for colon and padding
+
+		content.WriteString(fmt.Sprintf("%s\n", formatKeyValue("QE Involvement", previousCard.QEInvolvement, labelWidth)))
+		content.WriteString(fmt.Sprintf("%s\n", formatKeyValue("Tech Domain", previousCard.TechDomain, labelWidth)))
+		if previousCard.Summary != "" {
+			// Use a smaller width for the summary to fit in the info box
+			availableWidth := (terminalWidth * 2) / 5 // Use about 40% of terminal width
+			if availableWidth < 40 {
+				availableWidth = 40
+			}
+			content.WriteString(formatKeyValueWithWrap("Summary", previousCard.Summary, labelWidth, availableWidth))
+		}
+	}
+
+	// Apply styling and center
+	infoBox := sectionStyle.Render(content.String())
+
+	centeredStyle := lipgloss.NewStyle().
+		Width(terminalWidth).
+		Align(lipgloss.Center)
+
+	return centeredStyle.Render(infoBox)
+}
+
 func (m model) View() string {
 	if m.err != nil {
 		return fmt.Sprintf("Error: %v\nPress any key to exit.", m.err)
@@ -1159,6 +1220,14 @@ func (m model) View() string {
 
 	var content string
 	var instructions string
+	var previousSprintInfo string
+
+	// Get previous sprint information for this card if available
+	if m.previousCards != nil {
+		if prevCard, exists := m.previousCards[m.cards[m.currentCard].Key]; exists {
+			previousSprintInfo = renderPreviousSprintInfo(prevCard, m.terminalWidth)
+		}
+	}
 
 	switch m.currentStep {
 	case stepQEInvolvement:
@@ -1218,15 +1287,26 @@ func (m model) View() string {
 		Align(lipgloss.Center)
 	centeredInstructions := centeredInstructionsStyle.Render(progressStyle.Render(instructions))
 
-	return fmt.Sprintf(
-		"%s\n\n%s\n\n%s\n\n%s%s\n\n%s",
-		centeredTitle,
-		progressStyle.Render(progressDisplay),
-		cardInfo,
-		statusMsg,
-		content,
-		centeredInstructions,
-	)
+	// Build the view components
+	var viewParts []string
+	viewParts = append(viewParts, centeredTitle)
+	viewParts = append(viewParts, progressStyle.Render(progressDisplay))
+	viewParts = append(viewParts, cardInfo)
+
+	// Add previous sprint information if available
+	if previousSprintInfo != "" {
+		viewParts = append(viewParts, previousSprintInfo)
+	}
+
+	if statusMsg != "" {
+		viewParts = append(viewParts, statusMsg+content)
+	} else {
+		viewParts = append(viewParts, content)
+	}
+
+	viewParts = append(viewParts, centeredInstructions)
+
+	return strings.Join(viewParts, "\n\n")
 }
 
 func gatherOptions() options {
