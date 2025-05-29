@@ -45,6 +45,7 @@ type CardData struct {
 	TechDomain    string `yaml:"technical_domain,omitempty"`
 	Summary       string `yaml:"summary,omitempty"`
 	Skipped       bool   `yaml:"skipped,omitempty"`
+	Final         bool   `yaml:"final,omitempty"`
 
 	// Non-exported field to track if this card was prefilled from existing YAML
 	prefilled bool
@@ -334,6 +335,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cardData[i].TechDomain = existingCard.TechDomain
 				m.cardData[i].Summary = existingCard.Summary
 				m.cardData[i].Skipped = existingCard.Skipped
+				m.cardData[i].Final = existingCard.Final
 				m.cardData[i].prefilled = true
 			}
 		}
@@ -447,6 +449,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.reloadCardData(m.currentCard)
 				}
 				return m, nil
+			case "f":
+				// Toggle final status
+				m.cardData[m.currentCard].Final = !m.cardData[m.currentCard].Final
+				return m, m.savePartialResults()
 			case "s":
 				// Skip this card - mark as skipped and move to next card
 				m.cardData[m.currentCard].Skipped = true
@@ -549,6 +555,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.reloadCardData(m.currentCard)
 					}
 					return m, nil
+				case "f":
+					// Toggle final status
+					m.cardData[m.currentCard].Final = !m.cardData[m.currentCard].Final
+					return m, m.savePartialResults()
 				case "enter":
 					// Only allow enter to edit if card is not prefilled
 					if !m.cardData[m.currentCard].prefilled {
@@ -1172,7 +1182,7 @@ func (m model) View() string {
 		cardType = currentCard.Fields.Type.Name
 	}
 
-	// Add prefilled indicator
+	// Add prefilled and final indicators
 	prefillIndicator := ""
 	if m.cardData[m.currentCard].prefilled {
 		if m.cardData[m.currentCard].Skipped {
@@ -1180,6 +1190,11 @@ func (m model) View() string {
 		} else {
 			prefillIndicator = " ✅ (Previously completed)"
 		}
+	}
+
+	// Add final indicator
+	if m.cardData[m.currentCard].Final {
+		prefillIndicator += " 🏁 (Final)"
 	}
 
 	// Format card info with aligned values
@@ -1210,6 +1225,12 @@ func (m model) View() string {
 
 	// Create card with fixed width and center it
 	dynamicCardStyle := cardStyle.Copy().Width(cardWidth)
+
+	// Use green border for final cards
+	if m.cardData[m.currentCard].Final {
+		dynamicCardStyle = dynamicCardStyle.BorderForeground(lipgloss.Color("46")) // Green border
+	}
+
 	cardInfo := dynamicCardStyle.Render(cardInfoText)
 
 	// Center the entire card frame
@@ -1235,7 +1256,7 @@ func (m model) View() string {
 			// Show prefilled data
 			if m.cardData[m.currentCard].Skipped {
 				content = "This card was previously skipped."
-				instructions = "←/→ (h/l) to navigate cards, 'e' to edit, 'o' to open in browser, q to quit"
+				instructions = "←/→ (h/l) to navigate cards, 'e' to edit, 'f' to toggle final, 'o' to open in browser, q to quit"
 			} else {
 				prefilledLabels := []string{"QE Involvement", "Tech Domain", "Summary"}
 				prefilledLabelWidth := 0
@@ -1250,11 +1271,11 @@ func (m model) View() string {
 					formatKeyValue("QE Involvement", m.cardData[m.currentCard].QEInvolvement, prefilledLabelWidth),
 					formatKeyValue("Tech Domain", m.cardData[m.currentCard].TechDomain, prefilledLabelWidth),
 					formatKeyValueWithWrap("Summary", m.cardData[m.currentCard].Summary, prefilledLabelWidth, m.terminalWidth))
-				instructions = "←/→ (h/l) to navigate cards, 'e' to edit, 'o' to open in browser, q to quit"
+				instructions = "←/→ (h/l) to navigate cards, 'e' to edit, 'f' to toggle final, 'o' to open in browser, q to quit"
 			}
 		} else {
 			content = m.qeList.View()
-			instructions = "Use ↑/↓ to navigate options, ←/→ (h/l) to navigate cards, Enter to select, 'o' to open in browser, 'e' to edit prefilled, 's' to skip card, q to quit"
+			instructions = "Use ↑/↓ to navigate options, ←/→ (h/l) to navigate cards, Enter to select, 'f' to toggle final, 'o' to open in browser, 'e' to edit prefilled, 's' to skip card, q to quit"
 		}
 
 	case stepTechDomain:
@@ -1263,7 +1284,7 @@ func (m model) View() string {
 			instructions = "Type domain name, Enter to confirm, Esc to cancel"
 		} else {
 			content = m.techList.View()
-			instructions = "Use ↑/↓ to navigate options, ←/→ (h/l) to navigate cards, Enter to select, 'o' to open in browser, Esc to cancel edit, q to quit"
+			instructions = "Use ↑/↓ to navigate options, ←/→ (h/l) to navigate cards, Enter to select, 'f' to toggle final, 'o' to open in browser, Esc to cancel edit, q to quit"
 		}
 
 	case stepSummary:
