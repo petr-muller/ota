@@ -328,12 +328,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Navigate to previous card
 				if m.currentCard > 0 {
 					m.currentCard--
+					// Reload saved data for the card we're navigating to
+					m.reloadCardData(m.currentCard)
 				}
 				return m, nil
 			case "right", "l":
 				// Navigate to next card
 				if m.currentCard < len(m.cardData)-1 {
 					m.currentCard++
+					// Reload saved data for the card we're navigating to
+					m.reloadCardData(m.currentCard)
 				}
 				return m, nil
 			case "s":
@@ -426,12 +430,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Navigate to previous card
 					if m.currentCard > 0 {
 						m.currentCard--
+						// Reload saved data for the card we're navigating to
+						m.reloadCardData(m.currentCard)
 					}
 					return m, nil
 				case "right", "l":
 					// Navigate to next card
 					if m.currentCard < len(m.cardData)-1 {
 						m.currentCard++
+						// Reload saved data for the card we're navigating to
+						m.reloadCardData(m.currentCard)
 					}
 					return m, nil
 				case "enter":
@@ -505,6 +513,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				summary := strings.TrimSpace(m.summaryInput.Value())
 				if summary != "" {
 					m.cardData[m.currentCard].Summary = summary
+					// Mark the card as prefilled since it's now been completed
+					m.cardData[m.currentCard].prefilled = true
 					m.summaryInput.SetValue("")
 					m.summaryInput.Blur()
 
@@ -630,6 +640,26 @@ func (m *model) addTechDomain(techDomain string) {
 	// Add to available domains
 	m.techDomains = append(m.techDomains, techDomain)
 	m.updateTechList()
+}
+
+func (m *model) reloadCardData(cardIndex int) {
+	// Reload saved data for the specific card
+	existingCards := loadExistingYAML(m.outputFile)
+	cardKey := m.cardData[cardIndex].Key
+	
+	if existingCard, exists := existingCards[cardKey]; exists {
+		// Preserve the Key, URL, and Title from current data
+		key := m.cardData[cardIndex].Key
+		url := m.cardData[cardIndex].URL
+		title := m.cardData[cardIndex].Title
+		
+		// Update with saved data
+		m.cardData[cardIndex] = existingCard
+		m.cardData[cardIndex].Key = key
+		m.cardData[cardIndex].URL = url
+		m.cardData[cardIndex].Title = title
+		m.cardData[cardIndex].prefilled = true
+	}
 }
 
 func generateMarkdownSummary(cardData []CardData) string {
