@@ -26,10 +26,11 @@ import (
 )
 
 type options struct {
-	jira     flagutil.JiraOptions
-	filter   string
-	output   string
-	markdown string
+	jira           flagutil.JiraOptions
+	filter         string
+	output         string
+	markdown       string
+	previousSprint string
 }
 
 func (o *options) validate() error {
@@ -53,6 +54,12 @@ type SprintSummary struct {
 	Cards []CardData `yaml:"cards"`
 }
 
+type sprintComparison struct {
+	completed []CardData
+	carryover []CardData
+	new       []CardData
+}
+
 type jiraClient interface {
 	SearchWithContext(context.Context, string, *jira.SearchOptions) ([]jira.Issue, *jira.Response, error)
 	JiraURL() string
@@ -62,6 +69,7 @@ type step int
 
 const (
 	stepLoading step = iota
+	stepComparison
 	stepQEInvolvement
 	stepTechDomain
 	stepSummary
@@ -86,10 +94,11 @@ var (
 )
 
 type model struct {
-	jira         jiraClient
-	filterName   string
-	outputFile   string
-	markdownFile string
+	jira               jiraClient
+	filterName         string
+	outputFile         string
+	markdownFile       string
+	previousSprintFile string
 
 	cards       []jira.Issue
 	currentCard int
@@ -108,6 +117,7 @@ type model struct {
 	techDomains     []string
 	customTechInput bool
 	browserOpened   bool
+	comparison      *sprintComparison
 
 	// Terminal dimensions
 	terminalWidth  int
@@ -128,7 +138,7 @@ type browserOpenedMsg struct{}
 
 type clearBrowserOpenedMsg struct{}
 
-func initialModel(jira jiraClient, filterName, outputFile, markdownFile string) model {
+func initialModel(jira jiraClient, filterName, outputFile, markdownFile, previousSprintFile string) model {
 	s := spinner.New()
 	s.Spinner = spinner.Points
 
@@ -169,20 +179,21 @@ func initialModel(jira jiraClient, filterName, outputFile, markdownFile string) 
 	summaryInput.SetHeight(5)
 
 	return model{
-		jira:           jira,
-		filterName:     filterName,
-		outputFile:     outputFile,
-		markdownFile:   markdownFile,
-		currentStep:    stepLoading,
-		spinner:        s,
-		progress:       prog,
-		qeList:         qeList,
-		techList:       techList,
-		techInput:      techInput,
-		summaryInput:   summaryInput,
-		techDomains:    techDomains,
-		terminalWidth:  120, // Default width, will be updated by window size messages
-		terminalHeight: 30,  // Default height
+		jira:               jira,
+		filterName:         filterName,
+		outputFile:         outputFile,
+		markdownFile:       markdownFile,
+		previousSprintFile: previousSprintFile,
+		currentStep:        stepLoading,
+		spinner:            s,
+		progress:           prog,
+		qeList:             qeList,
+		techList:           techList,
+		techInput:          techInput,
+		summaryInput:       summaryInput,
+		techDomains:        techDomains,
+		terminalWidth:      120, // Default width, will be updated by window size messages
+		terminalHeight:     30,  // Default height
 	}
 }
 
@@ -231,6 +242,66 @@ func loadExistingYAML(filename string) map[string]CardData {
 	return existingCards
 }
 
+func loadPreviousSprintData(filename string) ([]CardData, error) {
+	if filename == "" {
+		return nil, nil
+	}
+
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read previous sprint file: %w", err)
+	}
+
+	var summary SprintSummary
+	if err := yaml.Unmarshal(data, &summary); err != nil {
+		return nil, fmt.Errorf("failed to parse previous sprint YAML: %w", err)
+	}
+
+	return summary.Cards, nil
+}
+
+func compareSprintData(previousCards []CardData, currentCards []jira.Issue) sprintComparison {
+	// Create a map of current cards for quick lookup
+	currentCardKeys := make(map[string]bool)
+	for _, card := range currentCards {
+		currentCardKeys[card.Key] = true
+	}
+
+	// Create a map of previous cards for quick lookup
+	previousCardMap := make(map[string]CardData)
+	for _, card := range previousCards {
+		previousCardMap[card.Key] = card
+	}
+
+	var comparison sprintComparison
+
+	// Find completed/abandoned cards (in previous but not in current)
+	for _, previousCard := range previousCards {
+		if !currentCardKeys[previousCard.Key] {
+			comparison.completed = append(comparison.completed, previousCard)
+		}
+	}
+
+	// Find carryover and new cards
+	for _, currentCard := range currentCards {
+		if _, exists := previousCardMap[currentCard.Key]; exists {
+			// Carryover card - exists in both sprints
+			comparison.carryover = append(comparison.carryover, CardData{
+				Key:   currentCard.Key,
+				Title: currentCard.Fields.Summary,
+			})
+		} else {
+			// New card - only in current sprint
+			comparison.new = append(comparison.new, CardData{
+				Key:   currentCard.Key,
+				Title: currentCard.Fields.Summary,
+			})
+		}
+	}
+
+	return comparison
+}
+
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
@@ -263,6 +334,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cardData[i].Summary = existingCard.Summary
 				m.cardData[i].Skipped = existingCard.Skipped
 				m.cardData[i].prefilled = true
+			}
+		}
+
+		// Check if we need to show sprint comparison
+		if m.previousSprintFile != "" {
+			previousCards, err := loadPreviousSprintData(m.previousSprintFile)
+			if err != nil {
+				m.err = err
+				return m, tea.Quit
+			}
+			if previousCards != nil {
+				comparison := compareSprintData(previousCards, m.cards)
+				m.comparison = &comparison
+				m.currentStep = stepComparison
+				return m, nil
 			}
 		}
 
@@ -301,6 +387,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch m.currentStep {
+		case stepComparison:
+			switch msg.String() {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			case "enter", " ":
+				// Continue to editing mode
+				if len(m.cards) == 0 {
+					m.currentStep = stepComplete
+				} else {
+					m.currentCard = 0
+					m.currentStep = stepQEInvolvement
+				}
+				return m, nil
+			}
 		case stepQEInvolvement:
 			switch msg.String() {
 			case "q", "ctrl+c":
@@ -646,13 +746,13 @@ func (m *model) reloadCardData(cardIndex int) {
 	// Reload saved data for the specific card
 	existingCards := loadExistingYAML(m.outputFile)
 	cardKey := m.cardData[cardIndex].Key
-	
+
 	if existingCard, exists := existingCards[cardKey]; exists {
 		// Preserve the Key, URL, and Title from current data
 		key := m.cardData[cardIndex].Key
 		url := m.cardData[cardIndex].URL
 		title := m.cardData[cardIndex].Title
-		
+
 		// Update with saved data
 		m.cardData[cardIndex] = existingCard
 		m.cardData[cardIndex].Key = key
@@ -864,6 +964,67 @@ func wrapText(text string, width int) string {
 	return strings.Join(result, "\n")
 }
 
+func renderComparisonTables(comparison sprintComparison, terminalWidth int) string {
+	var result strings.Builder
+
+	// Table style
+	tableStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(1).
+		MarginBottom(1)
+
+	sectionTitleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("205")).
+		MarginBottom(1)
+
+	// Calculate table width (1/3 of terminal width each, with margins)
+	tableWidth := (terminalWidth - 12) / 3 // Account for borders and margins
+	if tableWidth < 30 {
+		tableWidth = 30
+	}
+
+	// Completed/Abandoned cards
+	completedTable := sectionTitleStyle.Render("Completed/Abandoned") + "\n"
+	if len(comparison.completed) == 0 {
+		completedTable += "(None)"
+	} else {
+		for _, card := range comparison.completed {
+			completedTable += fmt.Sprintf("%s: %s\n", card.Key, wrapText(card.Title, tableWidth-10))
+		}
+	}
+
+	// Carryover cards
+	carryoverTable := sectionTitleStyle.Render("Carryover") + "\n"
+	if len(comparison.carryover) == 0 {
+		carryoverTable += "(None)"
+	} else {
+		for _, card := range comparison.carryover {
+			carryoverTable += fmt.Sprintf("%s: %s\n", card.Key, wrapText(card.Title, tableWidth-10))
+		}
+	}
+
+	// New cards
+	newTable := sectionTitleStyle.Render("New Cards") + "\n"
+	if len(comparison.new) == 0 {
+		newTable += "(None)"
+	} else {
+		for _, card := range comparison.new {
+			newTable += fmt.Sprintf("%s: %s\n", card.Key, wrapText(card.Title, tableWidth-10))
+		}
+	}
+
+	// Apply table styling
+	styledCompleted := tableStyle.Copy().Width(tableWidth).Render(completedTable)
+	styledCarryover := tableStyle.Copy().Width(tableWidth).Render(carryoverTable)
+	styledNew := tableStyle.Copy().Width(tableWidth).Render(newTable)
+
+	// Arrange tables side by side
+	result.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, styledCompleted, styledCarryover, styledNew))
+
+	return result.String()
+}
+
 func (m model) View() string {
 	if m.err != nil {
 		return fmt.Sprintf("Error: %v\nPress any key to exit.", m.err)
@@ -872,6 +1033,28 @@ func (m model) View() string {
 	switch m.currentStep {
 	case stepLoading:
 		return fmt.Sprintf("%s Loading sprint cards...", m.spinner.View())
+
+	case stepComparison:
+		if m.comparison == nil {
+			return "No comparison data available."
+		}
+
+		title := titleStyle.Render("Sprint Comparison")
+		comparisonView := renderComparisonTables(*m.comparison, m.terminalWidth)
+		instructions := progressStyle.Render("Press Enter or Space to continue to editing mode, q to quit")
+
+		// Center the title and instructions
+		centeredTitleStyle := lipgloss.NewStyle().
+			Width(m.terminalWidth).
+			Align(lipgloss.Center)
+		centeredTitle := centeredTitleStyle.Render(title)
+
+		centeredInstructionsStyle := lipgloss.NewStyle().
+			Width(m.terminalWidth).
+			Align(lipgloss.Center)
+		centeredInstructions := centeredInstructionsStyle.Render(instructions)
+
+		return fmt.Sprintf("%s\n\n%s\n\n%s", centeredTitle, comparisonView, centeredInstructions)
 
 	case stepComplete:
 		if len(m.cards) == 0 {
@@ -1054,6 +1237,7 @@ func gatherOptions() options {
 	fs.StringVar(&o.filter, "filter", "Filter for OTA", "Jira filter name")
 	fs.StringVar(&o.output, "output", "/tmp/sprint-summary.yaml", "Output YAML file")
 	fs.StringVar(&o.markdown, "markdown", "/tmp/sprint-summary.md", "Output markdown file")
+	fs.StringVar(&o.previousSprint, "previous-sprint", "", "Previous sprint YAML artifact for comparison")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		logrus.WithError(err).Fatalf("cannot parse args")
@@ -1073,7 +1257,7 @@ func main() {
 		logrus.WithError(err).Fatal("cannot create Jira client")
 	}
 
-	model := initialModel(jiraClient, o.filter, o.output, o.markdown)
+	model := initialModel(jiraClient, o.filter, o.output, o.markdown, o.previousSprint)
 
 	if _, err := tea.NewProgram(model, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Printf("Error running program: %v\n", err)
