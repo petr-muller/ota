@@ -652,6 +652,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+		case stepComplete:
+			switch msg.String() {
+			case "q", "ctrl+c", "enter", " ", "esc":
+				return m, tea.Quit
+			}
 		}
 	}
 
@@ -1129,7 +1134,7 @@ func (m model) View() string {
 
 	case stepComplete:
 		if len(m.cards) == 0 {
-			return "No cards found in current sprint."
+			return "No cards found in current sprint.\n\nPress any key to exit."
 		}
 		completedCount := 0
 		skippedCount := 0
@@ -1140,7 +1145,7 @@ func (m model) View() string {
 				completedCount++
 			}
 		}
-		return fmt.Sprintf("Summary saved to %s!\n\nCompleted %d cards, skipped %d cards.", m.outputFile, completedCount, skippedCount)
+		return fmt.Sprintf("Summary saved to %s!\n\nCompleted %d cards, skipped %d cards.\n\nPress any key to exit.", m.outputFile, completedCount, skippedCount)
 	}
 
 	if len(m.cards) == 0 {
@@ -1155,7 +1160,16 @@ func (m model) View() string {
 	if m.currentCard == len(m.cards)-1 {
 		progressPercent = 1.0 // 100% when on the last card
 	}
-	progressText := fmt.Sprintf("Card %d of %d", m.currentCard+1, len(m.cards))
+	
+	// Count final cards
+	finalCount := 0
+	for _, card := range m.cardData {
+		if card.Final {
+			finalCount++
+		}
+	}
+	
+	progressText := fmt.Sprintf("Card %d of %d (%d final)", m.currentCard+1, len(m.cards), finalCount)
 	progressBar := m.progress.ViewAs(progressPercent)
 
 	// Combine progress text and bar, then center them
