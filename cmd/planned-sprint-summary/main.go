@@ -835,7 +835,7 @@ func generateMarkdownSummary(cardData []CardData) string {
 			markdown.WriteString(fmt.Sprintf("## %s\n\n", domain))
 
 			for _, card := range cards {
-				markdown.WriteString(fmt.Sprintf("[%s](%s)\n\n", card.Key, card.URL))
+				markdown.WriteString(fmt.Sprintf("[%s](%s)\n\n", card.Title, card.URL))
 				if card.Summary != "" {
 					markdown.WriteString(fmt.Sprintf("%s\n\n", card.Summary))
 				}
