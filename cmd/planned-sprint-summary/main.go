@@ -458,8 +458,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cardData[m.currentCard].Skipped = true
 				m.currentCard++
 
-				// Skip to next non-prefilled card
-				for m.currentCard < len(m.cardData) && m.cardData[m.currentCard].prefilled {
+				// Skip to next non-final card (always move forward)
+				for m.currentCard < len(m.cardData) && m.cardData[m.currentCard].Final {
 					m.currentCard++
 				}
 
@@ -638,8 +638,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Move to next card
 					m.currentCard++
 
-					// Skip to next non-prefilled card
-					for m.currentCard < len(m.cardData) && m.cardData[m.currentCard].prefilled {
+					// Skip to next non-final card (always move forward)
+					for m.currentCard < len(m.cardData) && m.cardData[m.currentCard].Final {
 						m.currentCard++
 					}
 
@@ -1160,7 +1160,7 @@ func (m model) View() string {
 	if m.currentCard == len(m.cards)-1 {
 		progressPercent = 1.0 // 100% when on the last card
 	}
-	
+
 	// Count final cards
 	finalCount := 0
 	for _, card := range m.cardData {
@@ -1168,7 +1168,7 @@ func (m model) View() string {
 			finalCount++
 		}
 	}
-	
+
 	progressText := fmt.Sprintf("Card %d of %d (%d final)", m.currentCard+1, len(m.cards), finalCount)
 	progressBar := m.progress.ViewAs(progressPercent)
 
