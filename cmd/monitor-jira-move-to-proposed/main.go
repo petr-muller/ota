@@ -122,10 +122,36 @@ func main() {
 	// logrus.Infof("Adding an informative comment to %s card", ...)
 	// TODO(muller): Actually add a comment - but only if we actually change some state
 	if impactStatementRequest != nil {
-		// TODO(muller): Some projects, like API, do not have CODE REVIEW, just Review
+		statusName := determineStatusName(jiraClient, impactStatementRequest.Key)
 		logrus.Infof("%s: Moving Impact Statement Request card to CODE REVIEW", impactStatementRequest.Key)
-		if err := jiraClient.UpdateStatus(impactStatementRequest.Key, "CODE REVIEW"); err != nil {
-			logrus.WithError(err).Fatal("failed to update impact statement request card status to CODE REVIEW")
+		if err := jiraClient.UpdateStatus(impactStatementRequest.Key, statusName); err != nil {
+			logrus.WithField("statusName", statusName).WithError(err).Fatal("failed to update impact statement request card status")
 		}
 	}
+}
+
+type jiraClient interface {
+	GetTransitions(issueID string) ([]jira.Transition, error)
+}
+
+// determineStatusName returns "CODE REVIEW" unless "CODE REVIEW" is not a transition name while "REVIEW" is.
+// In that case, it returns "REVIEW".
+func determineStatusName(c jiraClient, issueID string) string {
+	ret := "CODE REVIEW"
+	transitions, err := c.GetTransitions(issueID)
+	if err != nil {
+		logrus.WithField("issueID", issueID).WithError(err).Errorf("failed to get the transitions and use %q instead", ret)
+		return ret
+	}
+	names := sets.NewString()
+	for _, transition := range transitions {
+		// JIRA shows all statuses as caps in the UI, but internally has different case; use ToUpper to ignore case
+		names.Insert(strings.ToUpper(transition.Name))
+	}
+
+	// Some projects, like API, do not have CODE REVIEW, just Review
+	if !names.Has("CODE REVIEW") && names.Has("REVIEW") {
+		return "REVIEW"
+	}
+	return ret
 }
