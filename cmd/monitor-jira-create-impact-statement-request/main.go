@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/petr-muller/ota/internal/flagutil"
+	"github.com/petr-muller/ota/internal/mappings"
 	"github.com/petr-muller/ota/internal/updateblockers"
 )
 
@@ -46,9 +48,7 @@ func (o *options) validate() error {
 		return fmt.Errorf("--bug must be specified and nonzero")
 	}
 
-	if o.componentProject == "" {
-		return fmt.Errorf("--for must be specified and nonempty")
-	}
+	// componentProject can be empty if we can derive it from mappings
 
 	validType := false
 	for _, validTaskType := range validTaskTypes {
@@ -64,6 +64,125 @@ func (o *options) validate() error {
 	return o.jira.Validate()
 }
 
+func getComponentName(issue *jira.Issue) (string, error) {
+	if len(issue.Fields.Components) == 0 {
+		return "", fmt.Errorf("issue %s has no components", issue.Key)
+	}
+
+	if len(issue.Fields.Components) > 1 {
+		logrus.Warnf("Issue %s has multiple components, using the first one: %s", issue.Key, issue.Fields.Components[0].Name)
+	}
+
+	return issue.Fields.Components[0].Name, nil
+}
+
+func askForConfirmation(message string) bool {
+	fmt.Printf("%s (y/N): ", message)
+	reader := bufio.NewReader(os.Stdin)
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		logrus.WithError(err).Warn("Failed to read user input, defaulting to 'no'")
+		return false
+	}
+	
+	response = strings.ToLower(strings.TrimSpace(response))
+	return response == "y" || response == "yes"
+}
+
+func determineProject(componentName, providedProject string, m *mappings.Mappings) (string, error) {
+	// If no component, must have provided project
+	if componentName == "" {
+		if providedProject == "" {
+			return "", fmt.Errorf("could not determine component and --for not provided")
+		}
+		return providedProject, nil
+	}
+	
+	mappedProject := m.GetProjectForComponent(componentName)
+	
+	// No --for provided, use mapping if available
+	if providedProject == "" {
+		if mappedProject == "" {
+			return "", fmt.Errorf("no mapping found for component %s and --for not provided", componentName)
+		}
+		logrus.Infof("Using mapped project %s for component %s", mappedProject, componentName)
+		return mappedProject, nil
+	}
+	
+	// --for was provided, check for conflicts
+	if mappedProject == "" || mappedProject == providedProject {
+		return providedProject, nil
+	}
+	
+	// Conflict: ask user which to use
+	if askForConfirmation(fmt.Sprintf("Component %s is mapped to project %s, but you provided %s. Use provided value?", componentName, mappedProject, providedProject)) {
+		logrus.Infof("Using provided project %s instead of mapped %s", providedProject, mappedProject)
+		return providedProject, nil
+	}
+	
+	logrus.Infof("Using mapped project %s instead of provided %s", mappedProject, providedProject)
+	return mappedProject, nil
+}
+
+func determineTaskType(project, providedTaskType string, m *mappings.Mappings) string {
+	mappedTaskType := m.GetTaskTypeForProject(project)
+	
+	// No mapping or same as provided
+	if mappedTaskType == "" || mappedTaskType == providedTaskType {
+		return providedTaskType
+	}
+	
+	// Use mapped type only if provided type is default
+	if providedTaskType == validTaskTypes[0] {
+		logrus.Infof("Using mapped task type %s for project %s", mappedTaskType, project)
+		return mappedTaskType
+	}
+	
+	logrus.Infof("Provided task type %s overrides mapped task type %s for project %s", providedTaskType, mappedTaskType, project)
+	return providedTaskType
+}
+
+func saveComponentMappingIfNeeded(componentName, providedProject, finalProject string, m *mappings.Mappings) {
+	if componentName == "" || providedProject == "" {
+		return
+	}
+	
+	mappedProject := m.GetProjectForComponent(componentName)
+	
+	// New mapping
+	if mappedProject == "" {
+		m.SetComponentMapping(componentName, finalProject)
+		logrus.Infof("Saved new component mapping: %s -> %s", componentName, finalProject)
+		return
+	}
+	
+	// Mapping unchanged
+	if mappedProject == finalProject {
+		return
+	}
+	
+	// User chose to override, ask if they want to update mapping
+	if askForConfirmation(fmt.Sprintf("Update mapping for component %s from %s to %s?", componentName, mappedProject, finalProject)) {
+		m.SetComponentMapping(componentName, finalProject)
+		logrus.Infof("Updated component mapping: %s -> %s", componentName, finalProject)
+	}
+}
+
+func saveTaskTypeMappingIfNeeded(project, finalTaskType string, m *mappings.Mappings) {
+	// Only save non-default task types
+	if finalTaskType == validTaskTypes[0] {
+		return
+	}
+	
+	mappedTaskType := m.GetTaskTypeForProject(project)
+	if mappedTaskType != "" {
+		return
+	}
+	
+	m.SetTaskTypeMapping(project, finalTaskType)
+	logrus.Infof("Saved new task type mapping: %s -> %s", project, finalTaskType)
+}
+
 func main() {
 	// TODO(muller): Cobrify as ota monitor jira create-impact-statement-request
 	o := gatherOptions()
@@ -76,6 +195,12 @@ func main() {
 		logrus.WithError(err).Fatal("cannot create Jira client")
 	}
 
+	// Load mappings
+	m, err := mappings.LoadMappings()
+	if err != nil {
+		logrus.WithError(err).Fatal("cannot load mappings")
+	}
+
 	ocpbugsId := fmt.Sprintf("OCPBUGS-%d", o.bugId)
 	logrus.Infof("Obtaining issue %s", ocpbugsId)
 
@@ -83,6 +208,23 @@ func main() {
 	if err != nil {
 		logrus.WithError(err).Fatal("cannot get issue")
 	}
+
+	// Extract component name from the issue
+	componentName, err := getComponentName(blockerCandidate)
+	if err != nil {
+		logrus.WithError(err).Warnf("Could not determine component for %s", ocpbugsId)
+		componentName = ""
+	} else {
+		logrus.Infof("Issue %s has component: %s", ocpbugsId, componentName)
+	}
+
+	// Determine the project and task type to use
+	finalProject, err := determineProject(componentName, o.componentProject, m)
+	if err != nil {
+		logrus.WithError(err).Fatal("cannot determine project")
+	}
+
+	finalTaskType := determineTaskType(finalProject, o.taskType, m)
 
 	// TODO(muller): Validate whether it is a valid recipient for the impact statement request (labels, existence of impact statement, etc.)
 
@@ -95,8 +237,8 @@ func main() {
 
 	impactStatementRequest := jira.Issue{
 		Fields: &jira.IssueFields{
-			Type:        jira.IssueType{Name: o.taskType},
-			Project:     jira.Project{Key: o.componentProject},
+			Type:        jira.IssueType{Name: finalTaskType},
+			Project:     jira.Project{Key: finalProject},
 			Priority:    &jira.Priority{Name: "Critical"},
 			Labels:      []string{updateblockers.LabelBlocker},
 			Description: fmt.Sprintf(descriptionTemplate, ocpbugsId, ocpbugsId),
@@ -107,7 +249,7 @@ func main() {
 		impactStatementRequest.Fields.Assignee = assignee
 	}
 
-	logrus.Infof("Creating impact statement request %s card in %s project", o.taskType, o.componentProject)
+	logrus.Infof("Creating impact statement request %s card in %s project", finalTaskType, finalProject)
 	isrIssue, err := jiraClient.CreateIssue(&impactStatementRequest)
 	if err != nil {
 		logrus.WithError(err).Fatal("cannot create impact statement request")
@@ -161,6 +303,14 @@ func main() {
 		Fields: &jira.IssueFields{Labels: sets.List(labels)},
 	}); err != nil {
 		logrus.WithError(err).Fatal("cannot update issue")
+	}
+
+	// Save mappings after successful card creation
+	saveComponentMappingIfNeeded(componentName, o.componentProject, finalProject, m)
+	saveTaskTypeMappingIfNeeded(finalProject, finalTaskType, m)
+	
+	if err := m.SaveMappings(); err != nil {
+		logrus.WithError(err).Warn("Failed to save mappings, but card was created successfully")
 	}
 
 }
