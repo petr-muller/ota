@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/andygrunwald/go-jira"
 	"github.com/sirupsen/logrus"
@@ -13,9 +14,12 @@ import (
 	"github.com/petr-muller/ota/internal/updateblockers"
 )
 
+var validTaskTypes = []string{"Spike", "Task"}
+
 type options struct {
 	bugId            int
 	componentProject string // TODO(muller): Infer automatically
+	taskType         string
 
 	jira flagutil.JiraOptions
 }
@@ -26,6 +30,7 @@ func gatherOptions() options {
 
 	fs.IntVar(&o.bugId, "bug", 0, "The numerical part of the OCPBUGS card to create the impact statement request for")
 	fs.StringVar(&o.componentProject, "for", "", "The project of the component to create the impact statement request for")
+	fs.StringVar(&o.taskType, "type", validTaskTypes[0], fmt.Sprintf("The type of Jira issue to create (%s)", strings.Join(validTaskTypes, " or ")))
 
 	o.jira.AddFlags(fs)
 
@@ -43,6 +48,17 @@ func (o *options) validate() error {
 
 	if o.componentProject == "" {
 		return fmt.Errorf("--for must be specified and nonempty")
+	}
+
+	validType := false
+	for _, validTaskType := range validTaskTypes {
+		if o.taskType == validTaskType {
+			validType = true
+			break
+		}
+	}
+	if !validType {
+		return fmt.Errorf("--type must be one of (%s), got '%s'", strings.Join(validTaskTypes, ", "), o.taskType)
 	}
 
 	return o.jira.Validate()
@@ -79,7 +95,7 @@ func main() {
 
 	impactStatementRequest := jira.Issue{
 		Fields: &jira.IssueFields{
-			Type:        jira.IssueType{Name: "Spike"},
+			Type:        jira.IssueType{Name: o.taskType},
 			Project:     jira.Project{Key: o.componentProject},
 			Priority:    &jira.Priority{Name: "Critical"},
 			Labels:      []string{updateblockers.LabelBlocker},
@@ -91,7 +107,7 @@ func main() {
 		impactStatementRequest.Fields.Assignee = assignee
 	}
 
-	logrus.Infof("Creating impact statement request Spike card in %s project", o.componentProject)
+	logrus.Infof("Creating impact statement request %s card in %s project", o.taskType, o.componentProject)
 	isrIssue, err := jiraClient.CreateIssue(&impactStatementRequest)
 	if err != nil {
 		logrus.WithError(err).Fatal("cannot create impact statement request")
