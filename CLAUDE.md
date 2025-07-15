@@ -71,3 +71,7 @@ Authentication requires a Jira bearer token stored at `~/.config/ota/jira-token`
 - **monitor-jira-dashboard**: Static dashboard showing current state across all upgrade blocker categories
 - **graph-** tools: Utilities for managing dependency graphs (likely OpenShift update graphs)
 - **monitor-jira-** tools: Automated label management for moving issues through the upgrade blocker workflow
+
+## Prompts Directory
+
+The `prompts/` directory contains prompts to kick off "larger" tasks with Claude. It should be used instead of writing a giant prompt that contains all the instructions for the task. Inclusion in the repository is also helpful to provide context about how a certain thing was built or how it works later, for both humans and AI.
