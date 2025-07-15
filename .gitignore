@@ -30,6 +30,7 @@ go.work
 /monitor-jira-move-to-updaterecommendationblocked
 /graph-extend-or-fix
 /graph-spread-edge-changes
+/jira-query-watch
 
 # Testing artifacts - specific output files
 sprint-summary.yaml
