@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -90,9 +91,47 @@ func (s *Store) ListQueries() ([]string, error) {
 
 	var queries []string
 	for _, entry := range entries {
-		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".yaml" {
-			name := entry.Name()[:len(entry.Name())-5] // Remove .yaml extension
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".yaml") {
+			// Remove .yaml extension
+			name := strings.TrimSuffix(entry.Name(), ".yaml")
 			queries = append(queries, name)
+		}
+	}
+
+	return queries, nil
+}
+
+// ListQueriesDetailed returns all stored queries with their details
+func (s *Store) ListQueriesDetailed() ([]QueryListItem, error) {
+	if err := s.ensureDataDir(); err != nil {
+		return nil, fmt.Errorf("failed to create data directory: %w", err)
+	}
+
+	entries, err := os.ReadDir(s.dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read data directory: %w", err)
+	}
+
+	var queries []QueryListItem
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".yaml") {
+			// Remove .yaml extension
+			name := strings.TrimSuffix(entry.Name(), ".yaml")
+			
+			// Load the query to get details
+			query, err := s.LoadQuery(name)
+			if err != nil {
+				continue // Skip queries that can't be loaded
+			}
+			
+			item := QueryListItem{
+				Name:        query.Name,
+				Description: query.Description,
+				JQL:         query.JQL,
+				LastFetched: query.LastFetched,
+				IssueCount:  len(query.Issues),
+			}
+			queries = append(queries, item)
 		}
 	}
 
