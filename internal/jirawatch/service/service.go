@@ -147,6 +147,11 @@ func (s *Service) DeleteQuery(name string) error {
 	return s.store.DeleteQuery(name)
 }
 
+// RenameQuery renames a stored query
+func (s *Service) RenameQuery(oldName, newName string) error {
+	return s.store.RenameQuery(oldName, newName)
+}
+
 // QueryExists checks if a query exists in storage
 func (s *Service) QueryExists(name string) bool {
 	return s.store.QueryExists(name)

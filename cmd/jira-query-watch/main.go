@@ -43,6 +43,7 @@ It provides three modes of operation:
 		newInspectCmd(),
 		newListCmd(),
 		newDeleteCmd(),
+		newRenameCmd(),
 	)
 
 	// Use fang to execute the command
@@ -109,6 +110,22 @@ func newDeleteCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			queryName = args[0]
 			return runDelete()
+		},
+	}
+
+	return cmd
+}
+
+func newRenameCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "rename <old-name> <new-name>",
+		Short: "Rename a stored query",
+		Long:  `Rename a stored query from old-name to new-name.`,
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			oldName := args[0]
+			newName := args[1]
+			return runRename(oldName, newName)
 		},
 	}
 
@@ -245,5 +262,27 @@ func runDelete() error {
 	}
 
 	fmt.Printf("Query '%s' deleted successfully\n", queryName)
+	return nil
+}
+
+func runRename(oldName, newName string) error {
+	svc, err := createService()
+	if err != nil {
+		return err
+	}
+
+	if !svc.QueryExists(oldName) {
+		return fmt.Errorf("query '%s' not found", oldName)
+	}
+
+	if svc.QueryExists(newName) {
+		return fmt.Errorf("query '%s' already exists", newName)
+	}
+
+	if err := svc.RenameQuery(oldName, newName); err != nil {
+		return fmt.Errorf("cannot rename query: %w", err)
+	}
+
+	fmt.Printf("Query renamed from '%s' to '%s' successfully\n", oldName, newName)
 	return nil
 }

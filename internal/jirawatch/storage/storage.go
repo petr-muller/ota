@@ -149,6 +149,30 @@ func (s *Store) DeleteQuery(name string) error {
 	return nil
 }
 
+// RenameQuery renames a query in storage
+func (s *Store) RenameQuery(oldName, newName string) error {
+	// Load the existing query
+	query, err := s.LoadQuery(oldName)
+	if err != nil {
+		return fmt.Errorf("failed to load query '%s': %w", oldName, err)
+	}
+	
+	// Update the name in the query
+	query.Name = newName
+	
+	// Save with the new name
+	if err := s.SaveQuery(*query); err != nil {
+		return fmt.Errorf("failed to save query with new name '%s': %w", newName, err)
+	}
+	
+	// Delete the old query file
+	if err := s.DeleteQuery(oldName); err != nil {
+		return fmt.Errorf("failed to delete old query '%s': %w", oldName, err)
+	}
+	
+	return nil
+}
+
 // GetDataDir returns the data directory path
 func (s *Store) GetDataDir() string {
 	return s.dataDir
