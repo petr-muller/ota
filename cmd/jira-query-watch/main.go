@@ -16,9 +16,10 @@ import (
 )
 
 var (
-	jiraOptions flagutil.JiraOptions
-	queryName   string
-	queryJQL    string
+	jiraOptions    flagutil.JiraOptions
+	queryName      string
+	queryJQL       string
+	queryDescription string
 )
 
 func main() {
@@ -63,6 +64,8 @@ The matching JIRA issue information will be fetched, displayed, and stored for f
 			return runWatch(cmd.Context())
 		},
 	}
+
+	cmd.Flags().StringVarP(&queryDescription, "description", "d", "", "Optional description for the query")
 
 	return cmd
 }
@@ -140,8 +143,9 @@ func runWatch(ctx context.Context) error {
 	}
 
 	opts := service.WatchQueryOptions{
-		Name: queryName,
-		JQL:  queryJQL,
+		Name:        queryName,
+		JQL:         queryJQL,
+		Description: queryDescription,
 	}
 
 	result, err := svc.WatchQuery(ctx, opts)
@@ -200,7 +204,7 @@ func runList() error {
 		return err
 	}
 
-	queries, err := svc.ListQueries()
+	queries, err := svc.ListQueriesDetailed()
 	if err != nil {
 		return fmt.Errorf("cannot list queries: %w", err)
 	}
@@ -212,7 +216,15 @@ func runList() error {
 
 	fmt.Println("Stored queries:")
 	for _, query := range queries {
-		fmt.Printf("  - %s\n", query)
+		fmt.Printf("  - %s", query.Name)
+		if query.Description != "" {
+			fmt.Printf(" - %s", query.Description)
+		}
+		fmt.Printf(" (%d issues", query.IssueCount)
+		if !query.LastFetched.IsZero() {
+			fmt.Printf(", last fetched: %s", query.LastFetched.Format("2006-01-02 15:04"))
+		}
+		fmt.Printf(")\n")
 	}
 
 	return nil

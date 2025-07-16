@@ -34,8 +34,9 @@ func NewService(jiraOptions flagutil.JiraOptions, dataDir string) (*Service, err
 
 // WatchQueryOptions contains options for watching a query
 type WatchQueryOptions struct {
-	Name string
-	JQL  string
+	Name        string
+	JQL         string
+	Description string
 }
 
 // WatchQuery executes a query and compares results with stored data
@@ -71,6 +72,7 @@ func (s *Service) WatchQuery(ctx context.Context, opts WatchQueryOptions) (*stor
 	// Update the query info
 	queryInfo := storage.QueryInfo{
 		Name:        opts.Name,
+		Description: opts.Description,
 		JQL:         opts.JQL,
 		LastFetched: time.Now(),
 		Issues:      currentIssues,
@@ -112,6 +114,7 @@ func (s *Service) InspectQuery(ctx context.Context, name string) (*storage.Query
 	// Update the query info
 	queryInfo := storage.QueryInfo{
 		Name:        existingQuery.Name,
+		Description: existingQuery.Description,
 		JQL:         existingQuery.JQL,
 		LastFetched: time.Now(),
 		Issues:      currentIssues,
@@ -132,6 +135,11 @@ func (s *Service) InspectQuery(ctx context.Context, name string) (*storage.Query
 // ListQueries returns all stored query names
 func (s *Service) ListQueries() ([]string, error) {
 	return s.store.ListQueries()
+}
+
+// ListQueriesDetailed returns all stored queries with their details
+func (s *Service) ListQueriesDetailed() ([]storage.QueryListItem, error) {
+	return s.store.ListQueriesDetailed()
 }
 
 // DeleteQuery removes a stored query

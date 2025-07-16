@@ -133,6 +133,15 @@ func (m Model) View() string {
 
 	s.WriteString(headerStyle.Render(fmt.Sprintf("Query: %s", m.queryName)))
 	s.WriteString("\n")
+	
+	// Description if available
+	if m.queryResult.Query.Description != "" {
+		descStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("250")).
+			Italic(true)
+		s.WriteString(descStyle.Render(m.queryResult.Query.Description))
+		s.WriteString("\n")
+	}
 
 	// Last fetched info
 	if !m.lastFetched.IsZero() {

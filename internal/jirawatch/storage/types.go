@@ -7,6 +7,7 @@ import (
 // QueryInfo represents metadata about a stored query
 type QueryInfo struct {
 	Name         string    `yaml:"name"`
+	Description  string    `yaml:"description,omitempty"`
 	JQL          string    `yaml:"jql"`
 	LastFetched  time.Time `yaml:"last_fetched"`
 	Issues       []Issue   `yaml:"issues"`
@@ -36,4 +37,13 @@ type QueryResult struct {
 	NewIssues    []Issue               `yaml:"new_issues"`
 	RemovedIssues []Issue              `yaml:"removed_issues"`
 	ChangedIssues map[string][]IssueChange `yaml:"changed_issues"`
+}
+
+// QueryListItem represents a query in a list view
+type QueryListItem struct {
+	Name        string
+	Description string
+	JQL         string
+	LastFetched time.Time
+	IssueCount  int
 }
