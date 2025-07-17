@@ -14,7 +14,7 @@ const (
 // JiraWatchDataDir returns the data directory path for jira-watch storage
 func JiraWatchDataDir() (string, error) {
 	var dataDir string
-	
+
 	// Try XDG_DATA_HOME first, then fallback to ~/.local/share
 	if xdgDataHome := os.Getenv("XDG_DATA_HOME"); xdgDataHome != "" {
 		dataDir = xdgDataHome

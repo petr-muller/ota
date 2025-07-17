@@ -61,7 +61,7 @@ func (s *Service) WatchQuery(ctx context.Context, opts WatchQueryOptions) (*stor
 	// Compare with previous results
 	var previousIssues []storage.Issue
 	var lastFetched time.Time
-	
+
 	if existingQuery != nil {
 		previousIssues = existingQuery.Issues
 		lastFetched = existingQuery.LastFetched
@@ -155,4 +155,9 @@ func (s *Service) RenameQuery(oldName, newName string) error {
 // QueryExists checks if a query exists in storage
 func (s *Service) QueryExists(name string) bool {
 	return s.store.QueryExists(name)
+}
+
+// JiraURL returns the base JIRA URL
+func (s *Service) JiraURL() string {
+	return s.jiraClient.JiraURL()
 }

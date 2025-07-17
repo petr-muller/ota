@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/charmbracelet/fang"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/fang"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
@@ -16,9 +16,9 @@ import (
 )
 
 var (
-	jiraOptions    flagutil.JiraOptions
-	queryName      string
-	queryJQL       string
+	jiraOptions      flagutil.JiraOptions
+	queryName        string
+	queryJQL         string
 	queryDescription string
 )
 
@@ -175,7 +175,7 @@ func runWatch(ctx context.Context) error {
 		return nil
 	}
 
-	model := ui.NewModel(queryName, *result, result.Query.LastFetched)
+	model := ui.NewModel(queryName, *result, result.Query.LastFetched, svc)
 	program := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := program.Run(); err != nil {
@@ -205,7 +205,7 @@ func runInspect(ctx context.Context) error {
 		return nil
 	}
 
-	model := ui.NewModel(queryName, *result, result.Query.LastFetched)
+	model := ui.NewModel(queryName, *result, result.Query.LastFetched, svc)
 	program := tea.NewProgram(model, tea.WithAltScreen())
 
 	if _, err := program.Run(); err != nil {

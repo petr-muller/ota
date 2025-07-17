@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"net/url"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -12,6 +14,11 @@ import (
 
 	"github.com/petr-muller/ota/internal/jirawatch/storage"
 )
+
+// JiraService represents the minimal interface we need from the service
+type JiraService interface {
+	JiraURL() string
+}
 
 // min returns the minimum of two integers
 func min(a, b int) int {
@@ -37,17 +44,18 @@ func formatDuration(d time.Duration) string {
 
 // Model represents the TUI model for displaying query results
 type Model struct {
-	table          table.Model
-	queryResult    storage.QueryResult
-	queryName      string
-	lastFetched    time.Time
-	width          int
-	height         int
+	table           table.Model
+	queryResult     storage.QueryResult
+	queryName       string
+	lastFetched     time.Time
+	width           int
+	height          int
 	displayedIssues []storage.Issue // Issues as they appear in the table
+	jiraService     JiraService     // Service for getting JIRA URL
 }
 
 // NewModel creates a new TUI model
-func NewModel(queryName string, queryResult storage.QueryResult, lastFetched time.Time) Model {
+func NewModel(queryName string, queryResult storage.QueryResult, lastFetched time.Time, jiraService JiraService) Model {
 	// Start with default columns - they will be resized when terminal size is known
 	// Summary will be displayed on a separate line, not as a column
 	columns := []table.Column{
@@ -67,17 +75,17 @@ func NewModel(queryName string, queryResult storage.QueryResult, lastFetched tim
 
 	// Customize table styles for better selection visibility
 	s := table.DefaultStyles()
-	
+
 	// Set default selection style (will be overridden dynamically)
 	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("230")).  // Light yellow text
-		Background(lipgloss.Color("240")).  // Default grey background
+		Foreground(lipgloss.Color("230")). // Light yellow text
+		Background(lipgloss.Color("240")). // Default grey background
 		Bold(true)
-	
+
 	// Try to disable table's own width management
-	s.Cell = s.Cell.MaxWidth(0) // Disable max width
+	s.Cell = s.Cell.MaxWidth(0)     // Disable max width
 	s.Header = s.Header.MaxWidth(0) // Disable max width for headers
-	
+
 	t.SetStyles(s)
 
 	m := Model{
@@ -85,6 +93,7 @@ func NewModel(queryName string, queryResult storage.QueryResult, lastFetched tim
 		queryResult: queryResult,
 		queryName:   queryName,
 		lastFetched: lastFetched,
+		jiraService: jiraService,
 	}
 
 	m.updateTable()
@@ -110,14 +119,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "o":
+			return m, m.openSelectedIssue()
 		}
 	}
 
 	m.table, cmd = m.table.Update(msg)
-	
+
 	// Update selection style based on selected item status
 	m.updateSelectionStyle()
-	
+
 	return m, cmd
 }
 
@@ -133,7 +144,7 @@ func (m Model) View() string {
 
 	s.WriteString(headerStyle.Render(fmt.Sprintf("Query: %s", m.queryName)))
 	s.WriteString("\n")
-	
+
 	// Description if available
 	if m.queryResult.Query.Description != "" {
 		descStyle := lipgloss.NewStyle().
@@ -148,8 +159,8 @@ func (m Model) View() string {
 		infoStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240"))
 		duration := time.Since(m.lastFetched)
-		s.WriteString(infoStyle.Render(fmt.Sprintf("Changes since: %s (%s ago)", 
-			m.lastFetched.Format("2006-01-02 15:04:05"), 
+		s.WriteString(infoStyle.Render(fmt.Sprintf("Changes since: %s (%s ago)",
+			m.lastFetched.Format("2006-01-02 15:04:05"),
 			formatDuration(duration))))
 		s.WriteString("\n")
 	}
@@ -206,7 +217,7 @@ func (m Model) View() string {
 	helpStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("240")).
 		MarginTop(1)
-	s.WriteString(helpStyle.Render("Press 'q' to quit, arrow keys to navigate"))
+	s.WriteString(helpStyle.Render("Press 'q' to quit, 'o' to open in browser, arrow keys to navigate"))
 
 	return s.String()
 }
@@ -246,10 +257,10 @@ func (m *Model) updateTable() {
 	}
 
 	m.table.SetRows(rows)
-	
+
 	// Update table size based on new content
 	m.updateTableSize()
-	
+
 	// Update selection style for the new data
 	m.updateSelectionStyle()
 }
@@ -301,10 +312,10 @@ func (m *Model) updateTableSize() {
 		// Add 1 for the header row
 		tableHeight := min(len(m.displayedIssues), 15) + 1
 		if tableHeight < 2 {
-			tableHeight = 2  // At least header + 1 row
+			tableHeight = 2 // At least header + 1 row
 		}
 		m.table.SetHeight(tableHeight)
-		
+
 		// Recalculate column widths based on terminal width
 		m.updateColumnWidths()
 	}
@@ -315,39 +326,39 @@ func (m *Model) updateColumnWidths() {
 	if m.width <= 0 {
 		return
 	}
-	
+
 	// Reserve space for table borders and padding
 	availableWidth := m.width - 10
-	
+
 	// Calculate optimal widths based on actual data
 	dataWidths := m.calculateDataWidths()
-	
+
 	// Add some padding to data widths
 	for key, width := range dataWidths {
 		dataWidths[key] = width + 4 // Add 4 chars padding for styled content
 	}
-	
+
 	// Calculate total data width needed
 	totalDataWidth := 0
 	for _, width := range dataWidths {
 		totalDataWidth += width
 	}
-	
+
 	// If we have more space than needed, distribute it proportionally
 	var columns []table.Column
 	if availableWidth > totalDataWidth {
 		extraWidth := availableWidth - totalDataWidth
-		
+
 		// Define how much extra space each column should get (as a proportion)
 		extraDistribution := map[string]float64{
-			"Key":          0.05,  // 5% of extra space
-			"Component":    0.25,  // 25% of extra space
-			"Status":       0.05,  // 5% of extra space
-			"Last Updated": 0.05,  // 5% of extra space
-			"Labels":       0.45,  // 45% of extra space (labels tend to be long)
-			"Assignee":     0.15,  // 15% of extra space
+			"Key":          0.05, // 5% of extra space
+			"Component":    0.25, // 25% of extra space
+			"Status":       0.05, // 5% of extra space
+			"Last Updated": 0.05, // 5% of extra space
+			"Labels":       0.45, // 45% of extra space (labels tend to be long)
+			"Assignee":     0.15, // 15% of extra space
 		}
-		
+
 		columns = []table.Column{
 			{Title: "Key", Width: dataWidths["Key"] + int(float64(extraWidth)*extraDistribution["Key"])},
 			{Title: "Component", Width: dataWidths["Component"] + int(float64(extraWidth)*extraDistribution["Component"])},
@@ -367,7 +378,7 @@ func (m *Model) updateColumnWidths() {
 			{Title: "Assignee", Width: dataWidths["Assignee"]},
 		}
 	}
-	
+
 	m.table.SetColumns(columns)
 }
 
@@ -381,7 +392,7 @@ func (m *Model) calculateDataWidths() map[string]int {
 		"Labels":       len("Labels"),
 		"Assignee":     len("Assignee"),
 	}
-	
+
 	// Check all displayed issues
 	for _, issue := range m.displayedIssues {
 		if len(issue.Key) > widths["Key"] {
@@ -393,24 +404,24 @@ func (m *Model) calculateDataWidths() map[string]int {
 		if len(issue.Status) > widths["Status"] {
 			widths["Status"] = len(issue.Status)
 		}
-		
+
 		// Last Updated is always in YYYY-MM-DD format
 		lastUpdated := issue.LastUpdated.Format("2006-01-02")
 		if len(lastUpdated) > widths["Last Updated"] {
 			widths["Last Updated"] = len(lastUpdated)
 		}
-		
+
 		// Labels are joined with ", "
 		labels := strings.Join(issue.Labels, ", ")
 		if len(labels) > widths["Labels"] {
 			widths["Labels"] = len(labels)
 		}
-		
+
 		if len(issue.Assignee) > widths["Assignee"] {
 			widths["Assignee"] = len(issue.Assignee)
 		}
 	}
-	
+
 	return widths
 }
 
@@ -419,15 +430,15 @@ func (m *Model) renderItemStatus() string {
 	if len(m.displayedIssues) == 0 {
 		return ""
 	}
-	
+
 	cursor := m.table.Cursor()
 	if cursor < 0 || cursor >= len(m.displayedIssues) {
 		return ""
 	}
-	
+
 	selectedIssue := m.displayedIssues[cursor]
 	var s strings.Builder
-	
+
 	// Determine item status and show it
 	if m.isNewIssue(selectedIssue) {
 		newStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Bold(true)
@@ -437,11 +448,11 @@ func (m *Model) renderItemStatus() string {
 		changedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
 		s.WriteString(changedStyle.Render("CHANGED ITEM"))
 		s.WriteString("\n")
-		
+
 		// Show what changed
 		changes := m.queryResult.ChangedIssues[selectedIssue.Key]
 		for _, change := range changes {
-			s.WriteString(fmt.Sprintf("  • %s changed from '%s' to '%s'\n", 
+			s.WriteString(fmt.Sprintf("  • %s changed from '%s' to '%s'\n",
 				change.Field, change.OldValue, change.NewValue))
 		}
 	} else if m.isRemovedIssue(selectedIssue) {
@@ -453,7 +464,7 @@ func (m *Model) renderItemStatus() string {
 		s.WriteString(unchangedStyle.Render("UNCHANGED ITEM"))
 		s.WriteString("\n")
 	}
-	
+
 	return s.String()
 }
 
@@ -486,36 +497,64 @@ func (m *Model) updateSelectionStyle() {
 	if len(m.displayedIssues) == 0 {
 		return
 	}
-	
+
 	cursor := m.table.Cursor()
 	if cursor < 0 || cursor >= len(m.displayedIssues) {
 		return
 	}
-	
+
 	selectedIssue := m.displayedIssues[cursor]
 	styles := table.DefaultStyles()
-	
+
 	// Determine background color based on item status
 	var backgroundColor lipgloss.Color
 	if m.isNewIssue(selectedIssue) {
-		backgroundColor = lipgloss.Color("22")  // Dark green
+		backgroundColor = lipgloss.Color("22") // Dark green
 	} else if m.isChangedIssue(selectedIssue) {
 		backgroundColor = lipgloss.Color("130") // Dark yellow/orange
 	} else if m.isRemovedIssue(selectedIssue) {
-		backgroundColor = lipgloss.Color("52")  // Dark red
+		backgroundColor = lipgloss.Color("52") // Dark red
 	} else {
 		backgroundColor = lipgloss.Color("240") // Grey (unchanged)
 	}
-	
+
 	// Update the selection style
 	styles.Selected = styles.Selected.
-		Foreground(lipgloss.Color("230")).  // Light text for contrast
+		Foreground(lipgloss.Color("230")). // Light text for contrast
 		Background(backgroundColor).
 		Bold(true)
-	
+
 	// Try to disable table's own width management
-	styles.Cell = styles.Cell.MaxWidth(0) // Disable max width
+	styles.Cell = styles.Cell.MaxWidth(0)     // Disable max width
 	styles.Header = styles.Header.MaxWidth(0) // Disable max width for headers
-	
+
 	m.table.SetStyles(styles)
+}
+
+// openSelectedIssue opens the selected JIRA issue in the browser
+func (m Model) openSelectedIssue() tea.Cmd {
+	return func() tea.Msg {
+		if len(m.displayedIssues) == 0 {
+			return nil
+		}
+
+		cursor := m.table.Cursor()
+		if cursor < 0 || cursor >= len(m.displayedIssues) {
+			return nil
+		}
+
+		selectedIssue := m.displayedIssues[cursor]
+		jiraURL := m.jiraService.JiraURL()
+
+		// Construct the issue URL
+		issueURL, err := url.JoinPath(jiraURL, "browse", selectedIssue.Key)
+		if err != nil {
+			return nil // Silently fail if URL construction fails
+		}
+
+		// Open the URL in the default browser using xdg-open
+		_ = exec.Command("xdg-open", issueURL).Start()
+
+		return nil
+	}
 }
