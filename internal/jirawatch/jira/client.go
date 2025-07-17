@@ -90,11 +90,16 @@ func (c *Client) ValidateJQL(ctx context.Context, jql string) error {
 	options := &jira.SearchOptions{
 		MaxResults: 1,
 	}
-	
+
 	_, _, err := c.jiraClient.SearchWithContext(ctx, jql, options)
 	if err != nil {
 		return fmt.Errorf("invalid JQL query: %w", err)
 	}
 
 	return nil
+}
+
+// JiraURL returns the base JIRA URL
+func (c *Client) JiraURL() string {
+	return c.jiraClient.JiraURL()
 }

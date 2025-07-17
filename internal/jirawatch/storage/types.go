@@ -6,11 +6,11 @@ import (
 
 // QueryInfo represents metadata about a stored query
 type QueryInfo struct {
-	Name         string    `yaml:"name"`
-	Description  string    `yaml:"description,omitempty"`
-	JQL          string    `yaml:"jql"`
-	LastFetched  time.Time `yaml:"last_fetched"`
-	Issues       []Issue   `yaml:"issues"`
+	Name        string    `yaml:"name"`
+	Description string    `yaml:"description,omitempty"`
+	JQL         string    `yaml:"jql"`
+	LastFetched time.Time `yaml:"last_fetched"`
+	Issues      []Issue   `yaml:"issues"`
 }
 
 // Issue represents a JIRA issue with the fields we care about
@@ -33,9 +33,9 @@ type IssueChange struct {
 
 // QueryResult represents the result of running a query with change tracking
 type QueryResult struct {
-	Query        QueryInfo              `yaml:"query"`
-	NewIssues    []Issue               `yaml:"new_issues"`
-	RemovedIssues []Issue              `yaml:"removed_issues"`
+	Query         QueryInfo                `yaml:"query"`
+	NewIssues     []Issue                  `yaml:"new_issues"`
+	RemovedIssues []Issue                  `yaml:"removed_issues"`
 	ChangedIssues map[string][]IssueChange `yaml:"changed_issues"`
 }
 

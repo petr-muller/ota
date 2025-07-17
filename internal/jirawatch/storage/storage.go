@@ -38,7 +38,7 @@ func (s *Store) SaveQuery(query QueryInfo) error {
 	}
 
 	filePath := s.queryFilePath(query.Name)
-	
+
 	data, err := yaml.Marshal(query)
 	if err != nil {
 		return fmt.Errorf("failed to marshal query: %w", err)
@@ -54,7 +54,7 @@ func (s *Store) SaveQuery(query QueryInfo) error {
 // LoadQuery loads a query from storage
 func (s *Store) LoadQuery(name string) (*QueryInfo, error) {
 	filePath := s.queryFilePath(name)
-	
+
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -117,13 +117,13 @@ func (s *Store) ListQueriesDetailed() ([]QueryListItem, error) {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".yaml") {
 			// Remove .yaml extension
 			name := strings.TrimSuffix(entry.Name(), ".yaml")
-			
+
 			// Load the query to get details
 			query, err := s.LoadQuery(name)
 			if err != nil {
 				continue // Skip queries that can't be loaded
 			}
-			
+
 			item := QueryListItem{
 				Name:        query.Name,
 				Description: query.Description,
@@ -141,7 +141,7 @@ func (s *Store) ListQueriesDetailed() ([]QueryListItem, error) {
 // DeleteQuery removes a query from storage
 func (s *Store) DeleteQuery(name string) error {
 	filePath := s.queryFilePath(name)
-	
+
 	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete query file: %w", err)
 	}
@@ -156,20 +156,20 @@ func (s *Store) RenameQuery(oldName, newName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load query '%s': %w", oldName, err)
 	}
-	
+
 	// Update the name in the query
 	query.Name = newName
-	
+
 	// Save with the new name
 	if err := s.SaveQuery(*query); err != nil {
 		return fmt.Errorf("failed to save query with new name '%s': %w", newName, err)
 	}
-	
+
 	// Delete the old query file
 	if err := s.DeleteQuery(oldName); err != nil {
 		return fmt.Errorf("failed to delete old query '%s': %w", oldName, err)
 	}
-	
+
 	return nil
 }
 
