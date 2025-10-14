@@ -7,7 +7,7 @@ toolchain go1.24.3
 require (
 	github.com/andygrunwald/go-jira v1.17.0
 	github.com/charmbracelet/bubbles v0.21.0
-	github.com/charmbracelet/bubbletea v1.3.6
+	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/fang v0.4.3
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/sirupsen/logrus v1.9.3
