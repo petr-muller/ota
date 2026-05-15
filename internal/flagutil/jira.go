@@ -15,19 +15,14 @@ const (
 
 type JiraOptions struct {
 	prowflagutil.JiraOptions
-	bearerTokenFileRef *string
-	endpointRef        *string
+	apiTokenFileRef *string
+	endpointRef     *string
 }
 
 // AddFlags injects Jira options into the given FlagSet
 func (o *JiraOptions) AddFlags(fs *flag.FlagSet) {
-	configDir := config.MustOtaConfigDir()
-	defaultTokenPath := filepath.Join(configDir, tokenFileName)
-
 	o.JiraOptions.AddCustomizedFlags(fs,
-		prowflagutil.JiraDefaultEndpoint("https://issues.redhat.com"),
-		prowflagutil.JiraDefaultBearerTokenFile(defaultTokenPath),
-		prowflagutil.JiraNoBasicAuth(),
+		prowflagutil.JiraDefaultEndpoint("https://redhat.atlassian.net"),
 	)
 }
 
@@ -37,8 +32,8 @@ func (o *JiraOptions) AddPFlags(fs *pflag.FlagSet) {
 	defaultTokenPath := filepath.Join(configDir, tokenFileName)
 
 	// Use pflag to add the flags and bind them manually
-	var bearerTokenFile, endpoint string
-	fs.StringVar(&bearerTokenFile, "jira.bearer-token-file", defaultTokenPath, "Path to the file containing the Jira bearer token")
+	var apiTokenFile, endpoint string
+	fs.StringVar(&apiTokenFile, "jira.api-token-file", defaultTokenPath, "Path to the file containing the Jira API token")
 	fs.StringVar(&endpoint, "jira.endpoint", "https://issues.redhat.com", "Jira endpoint URL")
 
 	// Set up a hook to copy values after parsing
@@ -53,18 +48,16 @@ func (o *JiraOptions) AddPFlags(fs *pflag.FlagSet) {
 	})
 
 	// Store references for later use
-	o.bearerTokenFileRef = &bearerTokenFile
+	o.apiTokenFileRef = &apiTokenFile
 	o.endpointRef = &endpoint
 }
 
 // SetFromPFlags copies values from pflag variables to the JiraOptions
 func (o *JiraOptions) SetFromPFlags() {
-	if o.bearerTokenFileRef != nil {
+	if o.apiTokenFileRef != nil {
 		goFlags := flag.NewFlagSet("temp", flag.ContinueOnError)
 		o.JiraOptions.AddCustomizedFlags(goFlags,
 			prowflagutil.JiraDefaultEndpoint(*o.endpointRef),
-			prowflagutil.JiraDefaultBearerTokenFile(*o.bearerTokenFileRef),
-			prowflagutil.JiraNoBasicAuth(),
 		)
 		goFlags.Parse([]string{}) // Parse empty args to set defaults
 	}
