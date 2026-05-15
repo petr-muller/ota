@@ -17,10 +17,10 @@ go build ./cmd/monitor-jira-dashboard/   # Build the dashboard tool
 ### Running Tools
 ```bash
 # Interactive TUI for monitoring upgrade blockers
-./monitor -jira.bearer-token-file=~/.config/ota/jira-token
+./monitor --jira-username "kerberosid@redhat.com" --jira-password-file ~/.config/ota/.jira-api-token
 
 # Dashboard view of upgrade blocker status
-./monitor-jira-dashboard -jira.bearer-token-file=~/.config/ota/jira-token
+./monitor-jira-dashboard --jira-username "kerberosid@redhat.com" --jira-password-file ~/.config/ota/.jira-api-token
 
 # Automated label management tools
 ./monitor-jira-clear-labels
@@ -47,7 +47,7 @@ go vet ./...                        # Static analysis
 
 ### Jira Integration
 
-The tools integrate with Red Hat's Jira instance (https://issues.redhat.com) using bearer token authentication. The main workflow involves:
+The tools integrate with Red Hat's Jira instance (https://redhat.atlassian.net) using Basic authentication. The main workflow involves:
 
 1. **UpgradeBlocker** issues that need impact statement requests
 2. **ImpactStatementRequested** issues waiting for developer input  
@@ -63,7 +63,7 @@ The tools integrate with Red Hat's Jira instance (https://issues.redhat.com) usi
 
 ## Configuration
 
-Authentication requires a Jira bearer token stored at `~/.config/ota/jira-token` by default. The configuration directory path is determined by `internal/config/dir.go`.
+Authentication requires a Jira API token stored at `~/.config/ota/jira-api-token` by default. The configuration directory path is determined by `internal/config/dir.go`.
 
 ## Tools Purpose
 
