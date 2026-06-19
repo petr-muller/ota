@@ -11,6 +11,10 @@ const (
 	defaultJiraEndpoint = "https://redhat.atlassian.net"
 )
 
+func JiraEndpoint() string {
+	return defaultJiraEndpoint
+}
+
 type JiraOptions struct {
 	prowflagutil.JiraOptions
 	endpointRef *string
