@@ -195,7 +195,7 @@ func main() {
 				return err
 			}
 
-			if edge.URL == fmt.Sprintf("https://issues.redhat.com/browse/%s", impactStatementRequest.Key) {
+			if edge.URL == fmt.Sprintf("%s/browse/%s", flagutil.JiraEndpoint(), impactStatementRequest.Key) {
 				conditionalRiskName = edge.Name
 				conditionalRiskSummary = edge.Message
 			}
