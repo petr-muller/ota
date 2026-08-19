@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,6 +93,45 @@ type ConditionallyBlockedEdge struct {
 	Name          string       `yaml:"name"`
 	Message       string       `yaml:"message"`
 	MatchingRules []PromQLRule `yaml:"matchingRules"`
+}
+
+// checkBugsOnReleasePage fetches the release page and checks if any of the provided bug keys are mentioned
+func checkBugsOnReleasePage(version string, bugKeys []string) (map[string]bool, error) {
+	releaseURL := fmt.Sprintf("https://amd64.ocp.releases.ci.openshift.org/releasestream/4-stable/release/%s", version)
+
+	logrus.Infof("Checking release page: %s", releaseURL)
+
+	resp, err := http.Get(releaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch release page: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("release page returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read release page body: %w", err)
+	}
+
+	pageContent := string(body)
+	bugsOnPage := make(map[string]bool)
+
+	for _, bugKey := range bugKeys {
+		// Check for full JIRA URL
+		fullJiraURL := fmt.Sprintf("https://issues.redhat.com/browse/%s", bugKey)
+		if strings.Contains(pageContent, fullJiraURL) {
+			bugsOnPage[bugKey] = true
+			logrus.Infof("Found %s on release page", bugKey)
+		} else {
+			bugsOnPage[bugKey] = false
+			logrus.Debugf("%s not found on release page", bugKey)
+		}
+	}
+
+	return bugsOnPage, nil
 }
 
 func main() {
@@ -196,6 +237,23 @@ func main() {
 		fmt.Printf("\n")
 
 		logrus.Infof("Found %d bug cards", len(bugs))
+
+		// Check release page for OCPBUGS cards
+		bugKeys := make([]string, 0, len(bugs))
+		for key := range bugs {
+			bugKeys = append(bugKeys, key)
+		}
+
+		bugsOnReleasePage, err := checkBugsOnReleasePage(o.newVersion, bugKeys)
+		if err != nil {
+			logrus.WithError(err).Warnf("Failed to check bugs on release page, continuing without release page information")
+			bugsOnReleasePage = make(map[string]bool)
+		}
+
+		fmt.Printf("Key\t\tD\tR\tTarget Version\tStatus\t\tSummary\n")
+		fmt.Printf("---\t\t-\t-\t--------------\t------\t\t-------\n")
+		fmt.Printf("(D=Direct block, R=On release page)\n")
+
 		for key, bug := range bugs {
 			targetVersion := ""
 			if items, err := getIssueTargetVersion(bug); err == nil && len(items) > 0 {
@@ -209,8 +267,14 @@ func main() {
 			if directBlocks.Has(key) {
 				direct = "x"
 			}
+
+			onReleasePage := ""
+			if found, exists := bugsOnReleasePage[key]; exists && found {
+				onReleasePage = "R"
+			}
+
 			// TODO(muller): Tabulate better, sort etc
-			fmt.Printf("%s\t%-2s\t%s\t%-12s\t%s\n", key, direct, targetVersion, bug.Fields.Status.Name, bug.Fields.Summary)
+			fmt.Printf("%s\t%-2s\t%-1s\t%s\t%-12s\t%s\n", key, direct, onReleasePage, targetVersion, bug.Fields.Status.Name, bug.Fields.Summary)
 		}
 	}
 
